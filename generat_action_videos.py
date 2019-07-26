@@ -60,7 +60,7 @@ def get_colors(action_names):
     return dict(zip(action_names, colors))
 
 
-def get_annot_adv(frame_idx, action_labels, cmapping, span=10, extent=7):
+def get_annot_adv(frame_idx, action_labels, cmapping, span=100, extent=7):
     colors = []
     for adv_idx in range(frame_idx - span, frame_idx + span):
         if adv_idx in action_labels:
@@ -70,7 +70,7 @@ def get_annot_adv(frame_idx, action_labels, cmapping, span=10, extent=7):
             color = [0, 0, 0, 1]
         colors.append(color)
     colors = np.array([[color,] * extent for color in colors]).reshape(len(colors) * extent, 4)
-    colors = colors[:, :3].transpose().reshape((-1, *colors[:, :3].shape)).repeat(extent, 0)
+    colors = colors[:, :3].reshape((-1, *colors[:, :3].shape)).repeat(extent * 10, 0)
     return colors
 
 
@@ -80,7 +80,7 @@ cmapping = get_colors(action_names)
 
 for frame_idx in range(1, args.frame_nb + 1):
     fig.clf()
-    ax = fig.add_subplot(1, 2, 1)
+    ax = fig.add_subplot(2, 1, 1)
     img_path = frame_template.format(args.split, args.person_id, video_full_id, frame_idx)
     if frame_idx in extended_action_labels:
         label = f'fr{frame_idx}_{extended_action_labels[frame_idx]}'
@@ -91,7 +91,7 @@ for frame_idx in range(1, args.frame_nb + 1):
     else:
         break
     adv_colors = get_annot_adv(frame_idx, extended_action_labels, cmapping)
-    ax = fig.add_subplot(1, 2, 2)
+    ax = fig.add_subplot(2, 1, 2)
     ax.imshow(adv_colors)
     ax.axis('off')
     # ax.axvline(x=plot_idx)
