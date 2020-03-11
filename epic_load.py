@@ -29,7 +29,7 @@ for key, val in vars(args).items():
     print(f'{key}: {val}')
 
 train_labels = training_labels()
-with open('EPIC_{args.split}_object_action_correspondence.pkl', 'rb') as p_f:
+with open(f'EPIC_{args.split}_object_action_correspondence.pkl', 'rb') as p_f:
     corresp_data = pickle.load(p_f)
 video_full_id = f'{args.person_id}_{args.video_id}'
 video_action_data = train_labels[(train_labels['video_id'] == video_full_id)]
@@ -47,7 +47,7 @@ object_data.frame = [object2action_frame[frame] for frame in object_data.frame]
 crop_res = [256, 256]
 save_folder = 'results/images'
 
-frame_template = 'D:/datasets/epic/rgb_frames/{}/{}/{}/frame_{:010d}.jpg'
+frame_template = '/mnt/disks/myssd/datasets/epic/frames/epictmp/frames_rgb_flow/rgb/{}/{}/{}/frame_{:010d}.jpg'
 
 for row_idx, action_row in video_action_data.iterrows():
     start_frame = action_row['start_frame']
@@ -75,7 +75,7 @@ for row_idx, action_row in video_action_data.iterrows():
         add_load_img(axes[0, 0], start_img_path, f'start img')
 
         # Load closest neighbor with bbox
-        start_bbox_img_path = frame_template.format(args.person_id, video_full_id, start_clos_value)
+        start_bbox_img_path = frame_template.format(args.split, args.person_id, video_full_id, start_clos_value)
         add_load_img(axes[0, 1], start_bbox_img_path, f'closest with bbox: {start_dist}')
         resize_factor = 456/1920  # from original to target resolution
         bboxes_start_norm = [epic_box_to_norm(bbox_start, resize_factor=resize_factor) for bbox_start in bboxes_start]
@@ -88,11 +88,11 @@ for row_idx, action_row in video_action_data.iterrows():
         add_load_img(axes[0, 2], start_bbox_img_path, title=f'crop', transform=affine_trans, crop_res=crop_res)
 
         # Load last image
-        stop_img_path = frame_template.format(args.person_id, video_full_id, stop_frame)
+        stop_img_path = frame_template.format(args.split, args.person_id, video_full_id, stop_frame)
         add_load_img(axes[1, 0], stop_img_path, f'stop img')
 
         # Load closest neighbor with bbox
-        stop_bbox_img_path = frame_template.format(args.person_id, video_full_id, stop_clos_value)
+        stop_bbox_img_path = frame_template.format(args.split, args.person_id, video_full_id, stop_clos_value)
         add_load_img(axes[1, 1], stop_bbox_img_path, f'closest with bbox: {stop_dist}')
         bboxes_stop_norm = [epic_box_to_norm(bbox_stop, resize_factor=resize_factor) for bbox_stop in bboxes_stop]
         detect2d.visualize_bboxes(axes[1, 1], bboxes_stop_norm, labels=[noun,] * len(bboxes_stop))

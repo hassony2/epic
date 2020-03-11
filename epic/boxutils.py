@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import numpy as np
 
 from libyana.metrics.iou import get_iou
@@ -5,7 +7,11 @@ from libyana.metrics.iou import get_iou
 
 def epic_box_to_norm(bbox, resize_factor=1):
     bbox = [bbox[1], bbox[0], bbox[3], bbox[2]]
-    bbox = [bbox[0] * resize_factor, bbox[1] * resize_factor, (bbox[0] + bbox[2]) * resize_factor, (bbox[1] + bbox[3])* resize_factor]
+    bbox = [
+        bbox[0] * resize_factor,
+        bbox[1] * resize_factor, (bbox[0] + bbox[2]) * resize_factor,
+        (bbox[1] + bbox[3]) * resize_factor
+    ]
     return bbox
 
 
@@ -34,35 +40,43 @@ def interpolate_bboxes(start_frame, end_frame, start_bbox, end_bbox):
     return inter_boxes
 
 
-def extend_props(candidates):
+def extend_props(candidates, interpolate=True):
     annot_frames = candidates['frame'].values
     annot_nouns = candidates['noun'].values
-    extended_bboxes = {}
-    for annot_idx, (annot_frame, annot_noun) in enumerate(zip(annot_frames[:-1], annot_nouns[:-1])):
+    extended_bboxes = defaultdict(list)
+    for annot_idx, (annot_frame, annot_noun) in enumerate(
+            zip(annot_frames[:-1], annot_nouns[:-1])):
         next_frame = annot_frames[annot_idx + 1]
         next_noun = annot_nouns[annot_idx + 1]
-        annot_boxes = candidates[candidates.frame == annot_frame].bounding_boxes.values[0]
+        annot_candidates = candidates[candidates.frame == annot_frame][
+            candidates.noun == annot_noun]
+        annot_boxes = annot_candidates.bounding_boxes.values[0]
         # if len(annot_boxes) > 1:
         #     raise ValueError('TODO handle several boxes')
-        next_boxes = candidates[candidates.frame == next_frame].bounding_boxes.values[0]
+        next_candidates = candidates[candidates.frame == next_frame][
+            candidates.noun == annot_noun]
+        if next_candidates.bounding_boxes.shape[0] > 0:
+            next_boxes = next_candidates.bounding_boxes.values[0]
 
-        # Detect consecutive annots with same nouns
-        extended_bboxes[annot_frame] = (annot_boxes, annot_noun)
-        extended_bboxes[next_frame] = (next_boxes, next_noun)
-        if next_frame - annot_frame < 31 and next_noun == annot_noun:
-            ious = np.zeros((len(annot_boxes), len(next_boxes)))
-            for cur_idx, annot_box in enumerate(annot_boxes):
-                for next_idx, next_box in enumerate(next_boxes):
-                    ious[cur_idx, next_idx] = get_iou(epic_box_to_norm(annot_box),
-                                                      epic_box_to_norm(next_box))
-            best_next_match_idxs = ious.argmax(1)
-            all_inter_boxes = []
-            for annot_idx, annot_box in enumerate(annot_boxes):
-                inter_bboxes = interpolate_bboxes(annot_frame,
-                    next_frame, annot_box, next_boxes[best_next_match_idxs[annot_idx]])
-                all_inter_boxes.append(inter_bboxes)
-            dict_inter_boxes = {}
-            for key in all_inter_boxes[0].keys():
-                dict_inter_boxes[key] = ([inter_boxes[key] for inter_boxes in all_inter_boxes], annot_noun)
-            extended_bboxes.update(dict_inter_boxes)
+            # Detect consecutive annots with same nouns
+            extended_bboxes[annot_frame].append((annot_boxes, annot_noun))
+            if next_frame - annot_frame < 31 and next_noun == annot_noun:
+                ious = np.zeros((len(annot_boxes), len(next_boxes)))
+                for cur_idx, annot_box in enumerate(annot_boxes):
+                    for next_idx, next_box in enumerate(next_boxes):
+                        ious[cur_idx,
+                             next_idx] = get_iou(epic_box_to_norm(annot_box),
+                                                 epic_box_to_norm(next_box))
+                best_next_match_idxs = ious.argmax(1)
+                all_inter_boxes = []
+                if interpolate:
+                    for annot_idx, annot_box in enumerate(annot_boxes):
+                        inter_bboxes = interpolate_bboxes(
+                            annot_frame, next_frame, annot_box,
+                            next_boxes[best_next_match_idxs[annot_idx]])
+                        all_inter_boxes.append(inter_bboxes)
+                    for key in all_inter_boxes[0].keys():
+                        extended_bboxes[key].append(([
+                            inter_boxes[key] for inter_boxes in all_inter_boxes
+                        ], annot_noun))
     return extended_bboxes

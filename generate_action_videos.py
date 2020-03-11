@@ -1,8 +1,9 @@
 import argparse
 import os
 import pickle
+import tarfile
+
 from matplotlib import pyplot as plt
-from matplotlib.pyplot import cm
 
 import numpy as np
 import pandas as pd
@@ -14,21 +15,9 @@ from libyana.visutils import detect2d
 from libyana.metrics.iou import get_iou
 from libyana.transformutils.handutils import get_affine_transform, transform_img
 
-from epic.displayutils import add_load_img
+from epic import displayutil
+from epic import labelutils
 
-def extend_action_labels(video_action_data):
-    dense_annots = {}
-    for row_idx, action_row in video_action_data.iterrows():
-        start_frame = action_row['start_frame']
-        stop_frame = action_row['stop_frame']
-
-        narration = action_row['narration']
-        # all_nouns = action_row['all_nouns']
-        # noun = action_row['noun']
-        # verb = action_row['verb']
-        for frame_idx in range(start_frame, stop_frame + 1):
-            dense_annots[frame_idx] = narration
-    return dense_annots
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--split', default='train', choices=['train', 'test'])
@@ -47,7 +36,7 @@ train_labels = training_labels()
 video_full_id = f'{args.person_id}_{args.video_id}'
 video_action_data = train_labels[(train_labels['video_id'] == video_full_id)]
 
-extended_action_labels = extend_action_labels(video_action_data)
+extended_action_labels = labelutils.extend_action_labels(video_action_data)
 action_names = set(extended_action_labels.values())
 
 save_folder = 'results/action_videos'
@@ -55,30 +44,16 @@ frame_template = 'D:/datasets/epic/rgb_frames/{}/{}/{}/frame_{:010d}.jpg'
 rendered_path = os.path.join(save_folder, f'{video_full_id}.mp4')
 os.makedirs(save_folder, exist_ok=True)
 
-def get_colors(action_names):
-    colors = list(cm.rainbow(np.linspace(0, 1, len(action_names))))
-    return dict(zip(action_names, colors))
-
-
-def get_annot_adv(frame_idx, action_labels, cmapping, span=100, extent=7):
-    colors = []
-    for adv_idx in range(frame_idx - span, frame_idx + span):
-        if adv_idx in action_labels:
-            action = action_labels[adv_idx]
-            color = cmapping[action]
-        else:
-            color = [0, 0, 0, 1]
-        colors.append(color)
-    colors = np.array([[color,] * extent for color in colors]).reshape(len(colors) * extent, 4)
-    colors = colors[:, :3].reshape((-1, *colors[:, :3].shape)).repeat(extent * 10, 0)
-    return colors
-
-
 fig = plt.figure()
 all_images = []
-cmapping = get_colors(action_names)
+cmapping = displayutils.get_colors(action_names)
 
+tarf = tarfile.open(tar_path)
+last_tar_path = tar_path
+fit_files = [os.path.join(fit_folder, rec_file) for rec_file in os.listdir(fit_folder)]
+fit_folder = os.path.join(args.fit_folder, 'results')
 for frame_idx in range(1, args.frame_nb + 1):
+    frame_subpath = f"./{frame_name}"
     fig.clf()
     ax = fig.add_subplot(2, 1, 1)
     img_path = frame_template.format(args.split, args.person_id, video_full_id, frame_idx)
@@ -87,10 +62,10 @@ for frame_idx in range(1, args.frame_nb + 1):
     else:
         label = f'fr{frame_idx}'
     if os.path.exists(img_path):
-        add_load_img(ax, img_path, label)
+        displayutils.add_load_img(ax, img_path, label)
     else:
         break
-    adv_colors = get_annot_adv(frame_idx, extended_action_labels, cmapping)
+    adv_colors = labelutils.get_annot_adv(frame_idx, extended_action_labels, cmapping)
     ax = fig.add_subplot(2, 1, 2)
     ax.imshow(adv_colors)
     ax.axis('off')
