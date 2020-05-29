@@ -40,6 +40,21 @@ def interpolate_bboxes(start_frame, end_frame, start_bbox, end_bbox):
     return inter_boxes
 
 
+def extend_labels(action_data):
+    start_frames = action_data.start_frame.values
+    stop_frames = action_data.stop_frame.values
+    narrations = action_data.narration.values
+    label_nb = len(narrations)
+    all_annots = {}
+    for label_idx in range(label_nb):
+        start_frame = start_frames[label_idx]
+        stop_frame = stop_frames[label_idx]
+        narration = narrations[label_idx]
+        for frame_idx in range(start_frame, stop_frame + 1):
+            all_annots[frame_idx] = narration
+    return all_annots
+
+
 def extend_props(candidates, interpolate=True):
     annot_frames = candidates['frame'].values
     annot_nouns = candidates['noun'].values
