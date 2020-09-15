@@ -46,7 +46,7 @@ train_labels = training_labels()
 video_full_id = f"{args.person_id}_{args.video_id}"
 video_action_data = train_labels[(train_labels["video_id"] == video_full_id)]
 
-extended_action_labels = labelutils.extend_action_labels(video_action_data)
+extended_action_labels, _ = labelutils.extend_action_labels(video_action_data)
 action_names = set(extended_action_labels.values())
 
 save_folder = "results/action_videos"

@@ -5,6 +5,8 @@ import dominate
 import dominate.tags as dtags
 import pandas as pd
 
+from epic import htmlgrid
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -99,33 +101,7 @@ if __name__ == "__main__":
 
     with doc:
         with dtags.article(cls="markdown-body"):
-            with dtags.table().add(dtags.tbody()):
-                for row_idx, row in enumerate(grid):
-                    with dtags.tr():
-                        for cell_idx, cell in enumerate(row):
-                            cell_type = cell["type"]
-                            if cell_type == "txt":
-                                if "text" not in cell:
-                                    raise ValueError(
-                                        "Expected grid cell of type 'txt'"
-                                        " to have field 'text'"
-                                    )
-                                dtags.td().add(dtags.p(cell["text"]))
-                            elif cell_type == "video":
-                                if "path" not in cell:
-                                    raise ValueError(
-                                        "Expected grid cell of type 'video'"
-                                        " to have field 'path'"
-                                    )
-                                video_path = cell["path"]
-                                if str(video_path).lower().endswith("webm"):
-                                    vid_type = "video/webm"
-                                if str(video_path).lower().endswith("mp4"):
-                                    vid_type = "video/mp4"
-                                with dtags.td():
-                                    dtags.video(controls=True, autoplay=False).add(
-                                        dtags.source(src=video_path, type=vid_type)
-                                    )
+            htmlgrid.html_grid(grid)
 
     if args.destination is not None:
         with open(args.destination, "w") as f:
