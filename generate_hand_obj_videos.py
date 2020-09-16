@@ -3,6 +3,7 @@ import os
 import pickle
 import tarfile
 from pathlib import Path
+import traceback
 
 import matplotlib
 
@@ -37,56 +38,65 @@ parser.add_argument(
     "--epic_root",
     default="/sequoia/data2/yhasson/datasets/epic-kitchen/process_yana/frames_rgb_flow/rgb_frames/",
 )
-parser.add_argument("--interpolate", action="store_true")
 parser.add_argument("--use_tar", action="store_true")
-# parser.add_argument("--video_id", default=1, type=int)
-parser.add_argument("--video_id", type=int)
-# parser.add_argument("--person_id", default=1, type=int)
-parser.add_argument("--person_id", type=int)
+parser.add_argument("--debug", action="store_true")
+parser.add_argument("--video_ids", type=int, nargs="+")
+parser.add_argument("--person_ids", type=int, nargs="+")
 parser.add_argument("--verb_filter", type=str)
+parser.add_argument("--noun_filters", type=str, nargs="+")
 parser.add_argument("--frame_nb", default=100000, type=int)
 parser.add_argument("--frame_step", default=10, type=int)
 args = parser.parse_args()
 
-if args.video_id is not None:
-    args.video_id = f"{args.video_id:02d}"
-if args.person_id is not None:
-    args.person_id = f"P{args.person_id:02d}"
+if args.video_ids is not None:
+    args.video_ids = [f"{video_id:02d}" for video_id in args.video_ids]
+    if args.person_ids is None:
+        raise ValueError("--person_ids should be provided when --video_ids is provided")
+
+if args.person_ids is not None:
+    args.person_ids = [f"P{person_id:02d}" for person_id in args.person_ids]
 
 for key, val in vars(args).items():
     print(f"{key}: {val}")
 
 annot_df = training_labels()
-if args.video_id is not None:
-    video_full_id = f"{args.person_id}_{args.video_id}"
+if args.video_ids is not None:
+    video_full_ids = []
+    for person_id, video_id in zip(args.person_ids, args.video_ids):
+        video_full_ids.append(f"{person_id}_{video_id}")
+    annot_nb = len(annot_df)
+    annot_df = annot_df[annot_df.video_id.isin(video_full_ids)]
+    print(f"Kept {len(annot_df)} / {annot_nb} actions with video_id {video_full_ids}")
 else:
-    video_full_id = None
-if args.person_id is not None:
-    annot_nb = len(annot_df)
-    annot_df = annot_df[annot_df.participant_id == args.person_id]
-    print(
-        f"Kept {len(annot_df)} / {annot_nb} actions with participant id {args.person_id}"
-    )
-if args.video_id is not None:
-    annot_nb = len(annot_df)
-    annot_df = annot_df[annot_df.video_id == video_full_id]
-    print(f"Kept {len(annot_df)} / {annot_nb} actions with video_id {video_full_id}")
+    video_full_ids = annot_df.video_id.unique()
+    args.person_ids = [vid[:3] for vid in video_full_ids]
+    args.video_ids = [vid[-2:] for vid in video_full_ids]
 if args.verb_filter is not None:
     annot_nb = len(annot_df)
     annot_df = annot_df[annot_df.verb == args.verb_filter]
     print(f"Kept {len(annot_df)} / {annot_nb} actions with verb {args.verb_filter}")
-video_action_data = annot_df[(annot_df["video_id"] == video_full_id)]
+if args.noun_filters is not None:
+    annot_nb = len(annot_df)
+    annot_df = annot_df[annot_df.noun.isin(args.noun_filters)]
+    print(f"Kept {len(annot_df)} / {annot_nb} actions with nouns {args.noun_filters}")
 
 # Get frame_idx : action_label frames
-obj_df = labelutils.get_obj_labels(
-    video_id=video_full_id, person_id=args.person_id, interpolate=args.interpolate
-)
-extended_action_labels, dense_df = labelutils.extend_action_labels(video_action_data)
+obj_dfs = []
+for video_full_id in video_full_ids:
+    obj_df = labelutils.get_obj_labels(
+        video_id=video_full_id, person_id=video_full_id[:3], interpolate=True
+    )
+    obj_dfs.append(obj_df)
+obj_df = pd.concat(obj_dfs)
+
+extended_action_labels, dense_df = labelutils.extend_action_labels(annot_df)
 action_names = set(extended_action_labels.values())
 
-save_folder = Path("results/action_segm_videos")
+save_folder = Path("results/action_segms/")
 if args.verb_filter is not None:
     save_folder = save_folder / args.verb_filter
+if args.noun_filters is not None:
+    save_folder = save_folder / "_".join(args.noun_filters)
 os.makedirs(save_folder, exist_ok=True)
 frame_template = os.path.join(args.epic_root, "{}/{}/{}/frame_{:010d}.jpg")
 
@@ -96,51 +106,69 @@ cmapping = displayutils.get_colors(action_names)
 video_segm_idxs = dense_df.action_idx.unique()
 resize_factor = 456 / 1920  # from original to target resolution
 for video_segm_idx in video_segm_idxs:
-    segm_images = []
-    segm_df = dense_df[dense_df.action_idx == video_segm_idx]
-    rendered_path = os.path.join(save_folder, f"{video_full_id}_{video_segm_idx}.webm")
-    for frame_idx in tqdm(segm_df.frame_idx[:: args.frame_step]):
-        frame_name = "frame_{frame_idx:010d}.jpg"
-        frame_subpath = f"./{frame_name}"
-        fig.clf()
-        ax = fig.add_subplot(2, 1, 2)
-        img_path = frame_template.format(
-            args.split, args.person_id, video_full_id, frame_idx
+    try:
+        segm_images = []
+        segm_df = dense_df[dense_df.action_idx == video_segm_idx]
+        video_full_id = segm_df.video_id.values[0]
+        person_id = segm_df.participant_id.values[0]
+        verb = segm_df.verb.values[0]
+        noun = segm_df.noun.values[0]
+        rendered_path = os.path.join(
+            save_folder,
+            f"{video_full_id}_{video_segm_idx}_verb_{verb}_noun_{noun}.webm",
         )
-        if frame_idx in extended_action_labels:
-            label = f"fr{frame_idx}: {extended_action_labels[frame_idx]}"
-        else:
-            label = f"fr{frame_idx}"
-        if os.path.exists(img_path):
-            displayutils.add_load_img(ax, img_path, label)
-            boxes_df = obj_df[obj_df.frame == frame_idx]
-            if boxes_df.shape[0] > 0:
-                print("Box !")
-                boxes = boxes_df.box.values
-                labels = boxes_df.noun.values
-                bboxes_norm = [
-                    epic_box_to_norm(bbox, resize_factor=resize_factor)
-                    for bbox in boxes
-                ]
-                label_color = "w"
-                detect2d.visualize_bboxes(
-                    ax, bboxes_norm, labels=labels, label_color=label_color
-                )
-        else:
-            break
-        # Get action label time extent bar for given frame
-        adv_colors = labelutils.get_annot_adv(
-            frame_idx, extended_action_labels, cmapping
-        )
-        ax = fig.add_subplot(2, 1, 1)
-        ax.imshow(adv_colors)
-        ax.axis("off")
-        fig.canvas.draw()
-        data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep="")
-        data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-        segm_images.append(data)
-    # score_clip = mpy.ImageSequenceClip(score_plots, fps=8)
-    clip = mpy.ImageSequenceClip(segm_images, fps=8)
-    # final_clip = mpy.clips_array([[clip,], [score_clip,]])
-    clip.write_videofile(rendered_path)
-    print(f"Saved video to {rendered_path}")
+        for frame_idx in tqdm(segm_df.frame_idx[:: args.frame_step]):
+            frame_name = "frame_{frame_idx:010d}.jpg"
+            frame_subpath = f"./{frame_name}"
+            fig.clf()
+            ax = fig.add_subplot(2, 1, 2)
+            img_path = frame_template.format(
+                args.split, person_id, video_full_id, frame_idx
+            )
+            if frame_idx in extended_action_labels:
+                label = f"fr{frame_idx}: {extended_action_labels[frame_idx]}"
+            else:
+                label = f"fr{frame_idx}"
+            if os.path.exists(img_path):
+                displayutils.add_load_img(ax, img_path, label)
+
+                # Display object annotations (ground truth)
+                vid_df = obj_df[obj_df.video_id == video_full_id]
+                boxes_df = vid_df[vid_df.frame == frame_idx]
+                if boxes_df.shape[0] > 0:
+                    if args.debug:
+                        print("Box !")
+                    boxes = boxes_df.box.values
+                    labels = boxes_df.noun.values
+                    bboxes_norm = [
+                        epic_box_to_norm(bbox, resize_factor=resize_factor)
+                        for bbox in boxes
+                    ]
+                    label_color = "w"
+                    detect2d.visualize_bboxes(
+                        ax,
+                        bboxes_norm,
+                        labels=labels,
+                        label_color=label_color,
+                        linewidth=2,
+                    )
+            else:
+                break
+            # Get action label time extent bar for given frame
+            adv_colors = labelutils.get_annot_adv(
+                frame_idx, extended_action_labels, cmapping
+            )
+            ax = fig.add_subplot(2, 1, 1)
+            ax.imshow(adv_colors)
+            ax.axis("off")
+            fig.canvas.draw()
+            data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep="")
+            data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+            segm_images.append(data)
+        # score_clip = mpy.ImageSequenceClip(score_plots, fps=8)
+        clip = mpy.ImageSequenceClip(segm_images, fps=8)
+        # final_clip = mpy.clips_array([[clip,], [score_clip,]])
+        clip.write_videofile(rendered_path)
+        print(f"Saved video to {rendered_path}")
+    except Exception:
+        traceback.print_exc()

@@ -21,7 +21,8 @@ from libyana.transformutils.handutils import get_affine_transform, transform_img
 
 from epic import displayutils
 from epic import labelutils
-
+from epic import boxutils
+from epic.hoa import gethoa
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--split", default="train", choices=["train", "test"])
@@ -34,6 +35,15 @@ parser.add_argument("--video_id", default=1, type=int)
 parser.add_argument("--person_id", default=1, type=int)
 parser.add_argument("--frame_nb", default=100000, type=int)
 parser.add_argument("--frame_step", default=10, type=int)
+parser.add_argument("--no_objects", action="store_true")
+parser.add_argument("--debug", action="store_true")
+parser.add_argument(
+    "--hoa", action="store_true", help="Add predicted hand and object bbox annotations"
+)
+parser.add_argument(
+    "--hoa_root",
+    default="/sequoia/data2/dataset/epic-100/3l8eci2oqgst92n14w2yqi5ytu/hand-objects/",
+)
 args = parser.parse_args()
 
 args.video_id = f"{args.video_id:02d}"
@@ -49,6 +59,13 @@ video_action_data = train_labels[(train_labels["video_id"] == video_full_id)]
 extended_action_labels, _ = labelutils.extend_action_labels(video_action_data)
 action_names = set(extended_action_labels.values())
 
+if not args.no_objects:
+    obj_df = labelutils.get_obj_labels(
+        video_id=video_full_id, person_id=args.person_id, interpolate=True
+    )
+if args.hoa:
+    hoa_dets = gethoa.load_video_hoa(video_full_id, hoa_root=args.hoa_root)
+
 save_folder = "results/action_videos"
 frame_template = os.path.join(args.epic_root, "{}/{}/{}/frame_{:010d}.jpg")
 # rendered_path = os.path.join(save_folder, f"{video_full_id}.mp4")
@@ -59,6 +76,7 @@ fig = plt.figure(figsize=(4, 5))
 all_images = []
 cmapping = displayutils.get_colors(action_names)
 
+resize_factor = 456 / 1920  # from original to target resolution
 for frame_idx in tqdm(range(1, args.frame_nb + 1, args.frame_step)):
     frame_name = "frame_{frame_idx:010d}.jpg"
     frame_subpath = f"./{frame_name}"
@@ -73,6 +91,74 @@ for frame_idx in tqdm(range(1, args.frame_nb + 1, args.frame_step)):
         label = f"fr{frame_idx}"
     if os.path.exists(img_path):
         displayutils.add_load_img(ax, img_path, label)
+        # Display object annotations (ground truth)
+        if not args.no_objects:
+            boxes_df = obj_df[obj_df.frame == frame_idx]
+            if boxes_df.shape[0] > 0:
+                if args.debug:
+                    print("Box !")
+                boxes = boxes_df.box.values
+                labels = boxes_df.noun.values
+                bboxes_norm = [
+                    boxutils.epic_box_to_norm(bbox, resize_factor=resize_factor)
+                    for bbox in boxes
+                ]
+                label_color = "w"
+                detect2d.visualize_bboxes(
+                    ax, bboxes_norm, labels=labels, label_color=label_color, linewidth=2
+                )
+        if args.hoa:
+            boxes_df = hoa_dets[hoa_dets.frame == frame_idx]
+            if boxes_df.shape[0] > 0:
+                if args.debug:
+                    print("Box !")
+                height_ratio = resize_factor * 1080
+                width_ratio = resize_factor * 1920
+                bboxes_norm = [
+                    [
+                        box_row[1].left * width_ratio,
+                        box_row[1].top * height_ratio,
+                        box_row[1].right * width_ratio,
+                        box_row[1].bottom * height_ratio,
+                    ]
+                    for box_row in boxes_df.iterrows()
+                ]
+                obj_types = boxes_df.det_type.values
+
+                def get_color(obj):
+                    if obj.det_type == "hand":
+                        if obj.side == "right":
+                            return "g"
+                        elif obj.size == "left":
+                            return "r"
+                    else:
+                        return "k"
+
+                def get_label(obj):
+                    if obj.det_type == "hand":
+                        hoa_label = obj.hoa_link[:5]
+                        if obj.side == "right":
+                            label = "hand_r" + hoa_label
+                        elif obj.side == "left":
+                            label = "hand_l" + hoa_label
+                        else:
+                            raise ValueError("hand side {obj.side} not in [left|right]")
+                    else:
+                        label = "obj"
+                    return f"{label}: {obj.score:.2f}"
+
+                colors = [get_color(obj[1]) for obj in boxes_df.iterrows()]
+                obj_scores = boxes_df.score.values
+                labels = [get_label(obj[1]) for obj in boxes_df.iterrows()]
+                label_color = "w"
+                detect2d.visualize_bboxes(
+                    ax,
+                    bboxes_norm,
+                    labels=labels,
+                    label_color=label_color,
+                    linewidth=2,
+                    color=colors,
+                )
     else:
         break
     # Get action label time extent bar for given frame
