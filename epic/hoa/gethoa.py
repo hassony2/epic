@@ -4,7 +4,7 @@ from epic.hoa import io as hoaio
 import pandas as pd
 
 
-def framedet2dicts(det, obj_thresh=0.5, hand_thresh=0.5):
+def framedet2dicts(det, obj_thresh=0.5, hand_thresh=0.5, height=1080, width=1920):
     res_dict = {"video_id": det.video_id, "frame": det.frame_number}
     dicts = []
     for obj_det in det.objects:
@@ -12,10 +12,10 @@ def framedet2dicts(det, obj_thresh=0.5, hand_thresh=0.5):
         score = obj_det.score
         if score > obj_thresh:
             det_dict["score"] = score
-            det_dict["left"] = obj_det.bbox.left
-            det_dict["right"] = obj_det.bbox.right
-            det_dict["top"] = obj_det.bbox.top
-            det_dict["bottom"] = obj_det.bbox.bottom
+            det_dict["left"] = obj_det.bbox.left * width
+            det_dict["right"] = obj_det.bbox.right * width
+            det_dict["top"] = obj_det.bbox.top * height
+            det_dict["bottom"] = obj_det.bbox.bottom * height
             det_dict["det_type"] = "object"
             dicts.append(det_dict)
     for hand_det in det.hands:
@@ -24,10 +24,10 @@ def framedet2dicts(det, obj_thresh=0.5, hand_thresh=0.5):
         if score > hand_thresh:
             det_dict["score"] = score
         det_dict["score"] = hand_det.score
-        det_dict["left"] = hand_det.bbox.left
-        det_dict["right"] = hand_det.bbox.right
-        det_dict["top"] = hand_det.bbox.top
-        det_dict["bottom"] = hand_det.bbox.bottom
+        det_dict["left"] = hand_det.bbox.left * width
+        det_dict["right"] = hand_det.bbox.right * width
+        det_dict["top"] = hand_det.bbox.top * height
+        det_dict["bottom"] = hand_det.bbox.bottom * height
         det_dict["det_type"] = "hand"
         det_dict["hoa_link"] = str(hand_det.state).split(".")[-1].lower()
         det_dict["side"] = str(hand_det.side).split(".")[-1].lower()

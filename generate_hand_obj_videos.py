@@ -30,6 +30,7 @@ from epic.boxutils import (
 )
 from epic import displayutils
 from epic import labelutils
+from epic.viz import hoaviz, boxgtviz
 
 
 parser = argparse.ArgumentParser()
@@ -134,24 +135,10 @@ for video_segm_idx in video_segm_idxs:
 
                 # Display object annotations (ground truth)
                 vid_df = obj_df[obj_df.video_id == video_full_id]
-                boxes_df = vid_df[vid_df.frame == frame_idx]
-                if boxes_df.shape[0] > 0:
-                    if args.debug:
-                        print("Box !")
-                    boxes = boxes_df.box.values
-                    labels = boxes_df.noun.values
-                    bboxes_norm = [
-                        epic_box_to_norm(bbox, resize_factor=resize_factor)
-                        for bbox in boxes
-                    ]
-                    label_color = "w"
-                    detect2d.visualize_bboxes(
-                        ax,
-                        bboxes_norm,
-                        labels=labels,
-                        label_color=label_color,
-                        linewidth=2,
-                    )
+                boxesgt_df = vid_df[vid_df.frame == frame_idx]
+                boxgtviz.add_boxesgt_viz(
+                    ax, boxesgt_df, resize_factor=resize_factor, debug=args.debug
+                )
             else:
                 break
             # Get action label time extent bar for given frame

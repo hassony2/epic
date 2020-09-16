@@ -9,7 +9,6 @@ matplotlib.use("agg")
 from matplotlib import pyplot as plt
 
 import numpy as np
-import pandas as pd
 from PIL import Image
 import moviepy.editor as mpy
 from tqdm import tqdm
@@ -21,8 +20,8 @@ from libyana.transformutils.handutils import get_affine_transform, transform_img
 
 from epic import displayutils
 from epic import labelutils
-from epic import boxutils
 from epic.hoa import gethoa
+from epic.viz import hoaviz, boxgtviz
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--split", default="train", choices=["train", "test"])
@@ -93,72 +92,15 @@ for frame_idx in tqdm(range(1, args.frame_nb + 1, args.frame_step)):
         displayutils.add_load_img(ax, img_path, label)
         # Display object annotations (ground truth)
         if not args.no_objects:
-            boxes_df = obj_df[obj_df.frame == frame_idx]
-            if boxes_df.shape[0] > 0:
-                if args.debug:
-                    print("Box !")
-                boxes = boxes_df.box.values
-                labels = boxes_df.noun.values
-                bboxes_norm = [
-                    boxutils.epic_box_to_norm(bbox, resize_factor=resize_factor)
-                    for bbox in boxes
-                ]
-                label_color = "w"
-                detect2d.visualize_bboxes(
-                    ax, bboxes_norm, labels=labels, label_color=label_color, linewidth=2
-                )
+            boxesgt_df = obj_df[obj_df.frame == frame_idx]
+            boxgtviz.add_boxesgt_viz(
+                ax, boxesgt_df, resize_factor=resize_factor, debug=args.debug
+            )
         if args.hoa:
-            boxes_df = hoa_dets[hoa_dets.frame == frame_idx]
-            if boxes_df.shape[0] > 0:
-                if args.debug:
-                    print("Box !")
-                height_ratio = resize_factor * 1080
-                width_ratio = resize_factor * 1920
-                bboxes_norm = [
-                    [
-                        box_row[1].left * width_ratio,
-                        box_row[1].top * height_ratio,
-                        box_row[1].right * width_ratio,
-                        box_row[1].bottom * height_ratio,
-                    ]
-                    for box_row in boxes_df.iterrows()
-                ]
-                obj_types = boxes_df.det_type.values
-
-                def get_color(obj):
-                    if obj.det_type == "hand":
-                        if obj.side == "right":
-                            return "g"
-                        elif obj.size == "left":
-                            return "r"
-                    else:
-                        return "k"
-
-                def get_label(obj):
-                    if obj.det_type == "hand":
-                        hoa_label = obj.hoa_link[:5]
-                        if obj.side == "right":
-                            label = "hand_r" + hoa_label
-                        elif obj.side == "left":
-                            label = "hand_l" + hoa_label
-                        else:
-                            raise ValueError("hand side {obj.side} not in [left|right]")
-                    else:
-                        label = "obj"
-                    return f"{label}: {obj.score:.2f}"
-
-                colors = [get_color(obj[1]) for obj in boxes_df.iterrows()]
-                obj_scores = boxes_df.score.values
-                labels = [get_label(obj[1]) for obj in boxes_df.iterrows()]
-                label_color = "w"
-                detect2d.visualize_bboxes(
-                    ax,
-                    bboxes_norm,
-                    labels=labels,
-                    label_color=label_color,
-                    linewidth=2,
-                    color=colors,
-                )
+            hoa_df = hoa_dets[hoa_dets.frame == frame_idx]
+            hoaviz.add_hoa_viz(
+                ax, hoa_df, resize_factor=resize_factor, debug=args.debug
+            )
     else:
         break
     # Get action label time extent bar for given frame
