@@ -1,5 +1,6 @@
 import os
 from copy import deepcopy
+from functools import lru_cache
 from pathlib import Path
 import pickle
 
@@ -10,6 +11,7 @@ import pandas as pd
 from epic.boxutils import extend_props
 
 
+@lru_cache(maxsize=128)
 def get_obj_labels(
     epic_annot_root="",
     split="train",

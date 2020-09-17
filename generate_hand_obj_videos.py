@@ -47,10 +47,15 @@ parser.add_argument("--video_ids", type=int, nargs="+")
 parser.add_argument("--person_ids", type=int, nargs="+")
 parser.add_argument("--verb_filter", type=str)
 parser.add_argument("--noun_filters", type=str, nargs="+")
+parser.add_argument("--no_objects", action="store_true")
 parser.add_argument("--frame_nb", default=100000, type=int)
 parser.add_argument("--frame_step", default=10, type=int)
 parser.add_argument(
     "--hoa", action="store_true", help="Add predicted hand and object bbox annotations"
+)
+parser.add_argument(
+    "--hoa_root",
+    default="/sequoia/data2/dataset/epic-100/3l8eci2oqgst92n14w2yqi5ytu/hand-objects/",
 )
 args = parser.parse_args()
 
@@ -118,6 +123,10 @@ for video_segm_idx in video_segm_idxs:
         video_full_id = segm_df.video_id.values[0]
         if args.hoa:
             hoa_dets = gethoa.load_video_hoa(video_full_id, hoa_root=args.hoa_root)
+        if not args.no_objects:
+            obj_df = labelutils.get_obj_labels(
+                video_id=video_full_id, person_id=args.person_id, interpolate=True
+            )
         person_id = segm_df.participant_id.values[0]
         verb = segm_df.verb.values[0]
         noun = segm_df.noun.values[0]
@@ -142,10 +151,11 @@ for video_segm_idx in video_segm_idxs:
 
                 # Display object annotations (ground truth)
                 vid_df = obj_df[obj_df.video_id == video_full_id]
-                boxesgt_df = vid_df[vid_df.frame == frame_idx]
-                boxgtviz.add_boxesgt_viz(
-                    ax, boxesgt_df, resize_factor=resize_factor, debug=args.debug
-                )
+                if not args.no_objects:
+                    boxesgt_df = vid_df[vid_df.frame == frame_idx]
+                    boxgtviz.add_boxesgt_viz(
+                        ax, boxesgt_df, resize_factor=resize_factor, debug=args.debug
+                    )
                 if args.hoa:
                     hoa_df = hoa_dets[hoa_dets.frame == frame_idx]
                     hoaviz.add_hoa_viz(

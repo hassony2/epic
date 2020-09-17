@@ -2,6 +2,7 @@ from copy import deepcopy
 from pathlib import Path
 from epic.hoa import io as hoaio
 import pandas as pd
+from functools import lru_cache
 
 
 def framedet2dicts(det, obj_thresh=0.5, hand_thresh=0.5, height=1080, width=1920):
@@ -37,6 +38,7 @@ def framedet2dicts(det, obj_thresh=0.5, hand_thresh=0.5, height=1080, width=1920
     return dicts
 
 
+@lru_cache(maxsize=128)
 def load_video_hoa(video_id, hoa_root):
     """
     Args:

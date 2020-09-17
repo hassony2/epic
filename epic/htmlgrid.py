@@ -8,6 +8,8 @@ def auto_make_cell(path, label=None):
             "type": "video",
             "path": path,
         }
+    else:
+        raise ValueError(f"{path} is not valid video path")
     return cell
 
 
