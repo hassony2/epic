@@ -22,6 +22,7 @@ from epic import displayutils
 from epic import labelutils
 from epic.hoa import gethoa
 from epic.viz import hoaviz, boxgtviz
+from epic.hpose import handposes, handviz
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--split", default="train", choices=["train", "test"])
@@ -34,6 +35,7 @@ parser.add_argument("--video_id", default=1, type=int)
 parser.add_argument("--person_id", default=1, type=int)
 parser.add_argument("--frame_nb", default=100000, type=int)
 parser.add_argument("--frame_step", default=10, type=int)
+parser.add_argument("--fps", default=8, type=int)
 parser.add_argument("--no_objects", action="store_true")
 parser.add_argument("--debug", action="store_true")
 parser.add_argument(
@@ -101,6 +103,16 @@ for frame_idx in tqdm(range(1, args.frame_nb + 1, args.frame_step)):
             hoaviz.add_hoa_viz(
                 ax, hoa_df, resize_factor=resize_factor, debug=args.debug
             )
+            if len(hoa_df):
+                hands_df = handposes.get_hands(
+                    hoa_df,
+                    img_path=img_path,
+                    img_resize_factor=resize_factor,
+                    crop_size=256,
+                    debug=args.debug,
+                )
+                handviz.add_hand_viz(ax, hands_df)
+
     else:
         break
     # Get action label time extent bar for given frame
@@ -112,8 +124,7 @@ for frame_idx in tqdm(range(1, args.frame_nb + 1, args.frame_step)):
     data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep="")
     data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
     all_images.append(data)
-# score_clip = mpy.ImageSequenceClip(score_plots, fps=8)
-clip = mpy.ImageSequenceClip(all_images, fps=8)
+clip = mpy.ImageSequenceClip(all_images, fps=args.fps)
 # final_clip = mpy.clips_array([[clip,], [score_clip,]])
 clip.write_videofile(rendered_path)
 print(f"Saved video to {rendered_path}")

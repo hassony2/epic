@@ -31,6 +31,8 @@ from epic.boxutils import (
 from epic import displayutils
 from epic import labelutils
 from epic.viz import hoaviz, boxgtviz
+from epic.hoa import gethoa
+from epic.hpose import handposes, handviz
 
 
 parser = argparse.ArgumentParser()
@@ -47,6 +49,9 @@ parser.add_argument("--verb_filter", type=str)
 parser.add_argument("--noun_filters", type=str, nargs="+")
 parser.add_argument("--frame_nb", default=100000, type=int)
 parser.add_argument("--frame_step", default=10, type=int)
+parser.add_argument(
+    "--hoa", action="store_true", help="Add predicted hand and object bbox annotations"
+)
 args = parser.parse_args()
 
 if args.video_ids is not None:
@@ -93,7 +98,7 @@ obj_df = pd.concat(obj_dfs)
 extended_action_labels, dense_df = labelutils.extend_action_labels(annot_df)
 action_names = set(extended_action_labels.values())
 
-save_folder = Path("results/action_segms/")
+save_folder = Path("results/action_segms_hoa/")
 if args.verb_filter is not None:
     save_folder = save_folder / args.verb_filter
 if args.noun_filters is not None:
@@ -111,6 +116,8 @@ for video_segm_idx in video_segm_idxs:
         segm_images = []
         segm_df = dense_df[dense_df.action_idx == video_segm_idx]
         video_full_id = segm_df.video_id.values[0]
+        if args.hoa:
+            hoa_dets = gethoa.load_video_hoa(video_full_id, hoa_root=args.hoa_root)
         person_id = segm_df.participant_id.values[0]
         verb = segm_df.verb.values[0]
         noun = segm_df.noun.values[0]
@@ -139,6 +146,20 @@ for video_segm_idx in video_segm_idxs:
                 boxgtviz.add_boxesgt_viz(
                     ax, boxesgt_df, resize_factor=resize_factor, debug=args.debug
                 )
+                if args.hoa:
+                    hoa_df = hoa_dets[hoa_dets.frame == frame_idx]
+                    hoaviz.add_hoa_viz(
+                        ax, hoa_df, resize_factor=resize_factor, debug=args.debug
+                    )
+                    if len(hoa_df):
+                        hands_df = handposes.get_hands(
+                            hoa_df,
+                            img_path=img_path,
+                            img_resize_factor=resize_factor,
+                            crop_size=256,
+                            debug=args.debug,
+                        )
+                        handviz.add_hand_viz(ax, hands_df)
             else:
                 break
             # Get action label time extent bar for given frame
