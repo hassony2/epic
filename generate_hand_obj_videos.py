@@ -30,8 +30,9 @@ from epic.boxutils import (
 )
 from epic import displayutils
 from epic import labelutils
-from epic.viz import hoaviz, boxgtviz
+from epic.viz import hoaviz, boxgtviz, masksviz
 from epic.hoa import gethoa
+from epic.masks import getmasks
 from epic.hpose import handposes, handviz
 
 
@@ -123,9 +124,12 @@ for video_segm_idx in video_segm_idxs:
         video_full_id = segm_df.video_id.values[0]
         if args.hoa:
             hoa_dets = gethoa.load_video_hoa(video_full_id, hoa_root=args.hoa_root)
+            masks_dets = getmasks.load_video_masks(
+                video_full_id, masks_root=args.hoa_root.replace("hand-objects", "masks")
+            )
         if not args.no_objects:
             obj_df = labelutils.get_obj_labels(
-                video_id=video_full_id, person_id=args.person_id, interpolate=True
+                video_id=video_full_id, person_id=video_full_id[:3], interpolate=True
             )
         person_id = segm_df.participant_id.values[0]
         verb = segm_df.verb.values[0]
@@ -160,6 +164,10 @@ for video_segm_idx in video_segm_idxs:
                     hoa_df = hoa_dets[hoa_dets.frame == frame_idx]
                     hoaviz.add_hoa_viz(
                         ax, hoa_df, resize_factor=resize_factor, debug=args.debug
+                    )
+                    masks_df = masks_dets[masks_dets.frame == frame_idx]
+                    masksviz.add_masks_viz(
+                        ax, masks_df, resize_factor, debug=args.debug
                     )
                     if len(hoa_df):
                         hands_df = handposes.get_hands(

@@ -21,6 +21,7 @@ from libyana.transformutils.handutils import get_affine_transform, transform_img
 from epic import displayutils
 from epic import labelutils
 from epic.hoa import gethoa
+from epic.masks import getmasks
 from epic.viz import hoaviz, boxgtviz
 from epic.hpose import handposes, handviz
 
@@ -60,12 +61,15 @@ video_action_data = train_labels[(train_labels["video_id"] == video_full_id)]
 extended_action_labels, _ = labelutils.extend_action_labels(video_action_data)
 action_names = set(extended_action_labels.values())
 
+if args.hoa:
+    masks_dets = getmasks.load_video_masks(
+        video_full_id, masks_root=args.hoa_root.replace("hand-objects", "masks")
+    )
+    hoa_dets = gethoa.load_video_hoa(video_full_id, hoa_root=args.hoa_root)
 if not args.no_objects:
     obj_df = labelutils.get_obj_labels(
         video_id=video_full_id, person_id=args.person_id, interpolate=True
     )
-if args.hoa:
-    hoa_dets = gethoa.load_video_hoa(video_full_id, hoa_root=args.hoa_root)
 
 save_folder = "results/action_videos"
 frame_template = os.path.join(args.epic_root, "{}/{}/{}/frame_{:010d}.jpg")
