@@ -37,7 +37,7 @@ if __name__ == "__main__":
     grid_cells = []
     for folder_name in args.folder_names:
         folder_name = Path(folder_name)
-        file_names = os.listdir(folder_name)
+        file_names = sorted(os.listdir(folder_name))
         folder_cells = []
         for file_name in file_names:
             file_path = folder_name / file_name
