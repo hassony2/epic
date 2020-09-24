@@ -1,7 +1,5 @@
 import argparse
 import os
-import pickle
-import tarfile
 from pathlib import Path
 import traceback
 
@@ -13,6 +11,8 @@ from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 from PIL import Image
+
+# Get FFMPEG outside env for moviepy
 import os
 
 os.environ["FFMPEG_BINARY"] = "/sequoia/data3/yhasson/miniconda3/bin/ffmpeg"
@@ -36,7 +36,12 @@ from epic import displayutils
 from epic import labelutils
 from epic.viz import hoaviz, boxgtviz, masksviz
 from epic.hoa import gethoa
-from epic.masks import bboxmasks
+from epic.masks import grabmasks
+
+try:
+    from epic.masks import bboxmasks
+except Exception:
+    traceback.print_exc()
 
 try:
     from epic.masks import getmasks
@@ -62,10 +67,13 @@ parser.add_argument("--noun_filters", type=str, nargs="+")
 parser.add_argument("--gt_objects", action="store_true")
 parser.add_argument("--frame_nb", default=100000, type=int)
 parser.add_argument("--frame_step", default=10, type=int)
-parser.add_argument("--mask_mode", default="predbox", help=["epic", "predbox"])
+parser.add_argument(
+    "--mask_mode", default="grabcut", help=["epic", "predbox", "grabcut"]
+)
 parser.add_argument(
     "--hoa", action="store_true", help="Add predicted hand and object bbox annotations"
 )
+parser.add_argument("--hands", action="store_true", help="Add predicted hand poses")
 parser.add_argument(
     "--hoa_root",
     default="/sequoia/data2/dataset/epic-100/3l8eci2oqgst92n14w2yqi5ytu/hand-objects/",
@@ -116,7 +124,7 @@ obj_df = pd.concat(obj_dfs)
 extended_action_labels, dense_df = labelutils.extend_action_labels(annot_df)
 action_names = set(extended_action_labels.values())
 
-save_folder = Path("results/action_segms_cocoprop/")
+save_folder = Path(f"results/action_segms_{args.mask_mode}/")
 if args.verb_filter is not None:
     save_folder = save_folder / args.verb_filter
 if args.noun_filters is not None:
@@ -148,6 +156,8 @@ for video_segm_idx in video_segm_idxs:
                 )
             elif args.mask_mode == "predbox":
                 mask_extractor = bboxmasks.MaskExtractor()
+            elif args.mask_mode == "grabcut":
+                pass
             else:
                 raise ValueError(f"mask_mode {args.mask_mode} not in [epic|predbox]")
         if args.gt_objects:
@@ -202,7 +212,13 @@ for video_segm_idx in video_segm_idxs:
                             img, hoa_df, resize_factor=resize_factor
                         )
                         masksviz.add_masks_viz(ax, masks, boxes, debug=args.debug)
-                    if len(hoa_df):
+                    elif args.mask_mode == "grabcut":
+                        img = np.array(img)
+                        masks, boxes = grabmasks.masks_from_df(
+                            img, hoa_df, resize_factor=resize_factor
+                        )
+                        masksviz.add_masks_viz(ax, masks, boxes, debug=args.debug)
+                    if len(hoa_df) and args.hands:
                         hands_df = handposes.get_hands(
                             hoa_df,
                             img_path=img_path,
@@ -224,6 +240,9 @@ for video_segm_idx in video_segm_idxs:
             fig.canvas.draw()
             data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep="")
             data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+            if args.debug:
+                os.makedirs("tmp", exist_ok=True)
+                fig.savefig("tmp/tmp{frame_idx}.png")
             segm_images.append(data)
         # score_clip = mpy.ImageSequenceClip(score_plots, fps=8)
         clip = mpy.ImageSequenceClip(segm_images, fps=args.fps)

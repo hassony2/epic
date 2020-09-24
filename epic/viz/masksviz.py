@@ -1,8 +1,10 @@
+from matplotlib import cm
 import numpy as np
 from PIL import Image
+import torch
+
 from libyana.visutils import detect2d
 from pycocotools.mask import decode as coco_mask_decode
-from matplotlib import cm
 from epic import boxutils
 
 
@@ -36,7 +38,9 @@ def add_masks_viz(ax, masks, bboxes_norm, mask_alpha=0.6, debug=False):
         color=colors,
     )
     for mask in masks:
-        base_mask = mask.cpu().detach().numpy()[:, :, np.newaxis].astype(np.float)
+        if isinstance(mask, torch.Tensor):
+            mask = mask.cpu().detach().numpy()
+        base_mask = mask[:, :, np.newaxis].astype(np.float)
         base_mask = base_mask / base_mask.max()
         show_mask = np.concatenate(
             [

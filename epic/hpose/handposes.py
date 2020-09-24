@@ -20,8 +20,6 @@ def get_hands(
     scale_factor=1.5,
     debug=True,
 ):
-    if hand_mode == "opp":
-        print("Loadded openpose hand model")
     hand_dicts = []
     for det_idx, det in hoa_df.iterrows():
         if det.det_type == "hand":
