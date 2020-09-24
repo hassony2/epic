@@ -1,0 +1,21 @@
+syntax = "proto3";
+package model.masks;
+
+message BBox {
+  float left = 1;
+  float top = 2;
+  float right = 3;
+  float bottom = 4;
+}
+
+message ObjectDetection {
+  BBox bbox = 1;
+  bytes coco_mask = 2;
+  float score = 3;
+  int32 pred_class = 4;
+}
+
+message FrameObjectDetections {
+    int32 frame_number = 2;
+    repeated ObjectDetection objects = 3;
+}

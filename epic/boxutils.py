@@ -7,6 +7,16 @@ from scipy.optimize import linear_sum_assignment
 from libyana.metrics.iou import get_iou
 
 
+def dfbox_to_norm(row, resize_factor=1):
+    box = [
+        row.left * resize_factor,
+        row.top * resize_factor,
+        row.right * resize_factor,
+        row.bottom * resize_factor,
+    ]
+    return box
+
+
 def epic_box_to_norm(bbox, resize_factor=1):
     bbox = [bbox[1], bbox[0], bbox[3], bbox[2]]
     bbox = [

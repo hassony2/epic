@@ -13,6 +13,7 @@ def add_load_img(ax, img_path, title=None, transform=None, crop_res=None):
         ax.set_title(title)
     ax.imshow(img)
     ax.axis("off")
+    return img
 
 
 def get_colors(action_names):

@@ -13,7 +13,11 @@ from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 from PIL import Image
+import os
+
+os.environ["FFMPEG_BINARY"] = "/sequoia/data3/yhasson/miniconda3/bin/ffmpeg"
 import moviepy.editor as mpy
+
 from tqdm import tqdm
 
 from epic_kitchens.meta import training_labels
@@ -32,17 +36,24 @@ from epic import displayutils
 from epic import labelutils
 from epic.viz import hoaviz, boxgtviz, masksviz
 from epic.hoa import gethoa
-from epic.masks import getmasks
+from epic.masks import bboxmasks
+
+try:
+    from epic.masks import getmasks
+except Exception:
+    traceback.print_exc()
 from epic.hpose import handposes, handviz
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--split", default="train", choices=["train", "test"])
+parser.add_argument("--show_adv", action="store_true")
 parser.add_argument(
     "--epic_root",
     default="/sequoia/data2/yhasson/datasets/epic-kitchen/process_yana/frames_rgb_flow/rgb_frames/",
 )
 parser.add_argument("--use_tar", action="store_true")
+parser.add_argument("--fps", default=2, type=int)
 parser.add_argument("--debug", action="store_true")
 parser.add_argument("--video_ids", type=int, nargs="+")
 parser.add_argument("--person_ids", type=int, nargs="+")
@@ -51,6 +62,7 @@ parser.add_argument("--noun_filters", type=str, nargs="+")
 parser.add_argument("--gt_objects", action="store_true")
 parser.add_argument("--frame_nb", default=100000, type=int)
 parser.add_argument("--frame_step", default=10, type=int)
+parser.add_argument("--mask_mode", default="predbox", help=["epic", "predbox"])
 parser.add_argument(
     "--hoa", action="store_true", help="Add predicted hand and object bbox annotations"
 )
@@ -104,7 +116,7 @@ obj_df = pd.concat(obj_dfs)
 extended_action_labels, dense_df = labelutils.extend_action_labels(annot_df)
 action_names = set(extended_action_labels.values())
 
-save_folder = Path("results/action_segms_hoa/")
+save_folder = Path("results/action_segms_cocoprop/")
 if args.verb_filter is not None:
     save_folder = save_folder / args.verb_filter
 if args.noun_filters is not None:
@@ -112,7 +124,10 @@ if args.noun_filters is not None:
 os.makedirs(save_folder, exist_ok=True)
 frame_template = os.path.join(args.epic_root, "{}/{}/{}/frame_{:010d}.jpg")
 
-fig = plt.figure(figsize=(4, 5))
+if args.show_adv:
+    fig = plt.figure(figsize=(4, 5))
+else:
+    fig = plt.figure(figsize=(5, 4))
 cmapping = displayutils.get_colors(action_names)
 
 video_segm_idxs = dense_df.action_idx.unique()
@@ -124,12 +139,17 @@ for video_segm_idx in video_segm_idxs:
         video_full_id = segm_df.video_id.values[0]
         if args.hoa:
             hoa_dets = gethoa.load_video_hoa(video_full_id, hoa_root=args.hoa_root)
-            masks_dets = getmasks.load_video_masks(
-                video_full_id,
-                masks_root=args.hoa_root.replace("hand-objects", "masks"),
-                hoa_df=hoa_dets,
-                filter_mode="hoaiou",
-            )
+            if args.mask_mode == "epic":
+                masks_dets = getmasks.load_video_masks(
+                    video_full_id,
+                    masks_root=args.hoa_root.replace("hand-objects", "masks"),
+                    hoa_df=hoa_dets,
+                    filter_mode="hoaiou",
+                )
+            elif args.mask_mode == "predbox":
+                mask_extractor = bboxmasks.MaskExtractor()
+            else:
+                raise ValueError(f"mask_mode {args.mask_mode} not in [epic|predbox]")
         if args.gt_objects:
             obj_df = labelutils.get_obj_labels(
                 video_id=video_full_id, person_id=video_full_id[:3], interpolate=True
@@ -145,7 +165,10 @@ for video_segm_idx in video_segm_idxs:
             frame_name = "frame_{frame_idx:010d}.jpg"
             frame_subpath = f"./{frame_name}"
             fig.clf()
-            ax = fig.add_subplot(2, 1, 2)
+            if args.show_adv:
+                ax = fig.add_subplot(2, 1, 2)
+            else:
+                ax = fig.add_subplot(1, 1, 1)
             img_path = frame_template.format(
                 args.split, person_id, video_full_id, frame_idx
             )
@@ -154,7 +177,7 @@ for video_segm_idx in video_segm_idxs:
             else:
                 label = f"fr{frame_idx}"
             if os.path.exists(img_path):
-                displayutils.add_load_img(ax, img_path, label)
+                img = displayutils.add_load_img(ax, img_path, label)
 
                 # Display object annotations (ground truth)
                 vid_df = obj_df[obj_df.video_id == video_full_id]
@@ -168,10 +191,17 @@ for video_segm_idx in video_segm_idxs:
                     hoaviz.add_hoa_viz(
                         ax, hoa_df, resize_factor=resize_factor, debug=args.debug
                     )
-                    masks_df = masks_dets[masks_dets.frame == frame_idx]
-                    masksviz.add_masks_viz(
-                        ax, masks_df, resize_factor, debug=args.debug
-                    )
+                    if args.mask_mode == "epic":
+                        masks_df = masks_dets[masks_dets.frame == frame_idx]
+                        masksviz.add_masks_df_viz(
+                            ax, masks_df, resize_factor, debug=args.debug
+                        )
+                    elif args.mask_mode == "predbox":
+                        img = np.array(img)
+                        masks, boxes = mask_extractor.masks_from_df(
+                            img, hoa_df, resize_factor=resize_factor
+                        )
+                        masksviz.add_masks_viz(ax, masks, boxes, debug=args.debug)
                     if len(hoa_df):
                         hands_df = handposes.get_hands(
                             hoa_df,
@@ -184,18 +214,19 @@ for video_segm_idx in video_segm_idxs:
             else:
                 break
             # Get action label time extent bar for given frame
-            adv_colors = labelutils.get_annot_adv(
-                frame_idx, extended_action_labels, cmapping
-            )
-            ax = fig.add_subplot(2, 1, 1)
-            ax.imshow(adv_colors)
-            ax.axis("off")
+            if args.show_adv:
+                adv_colors = labelutils.get_annot_adv(
+                    frame_idx, extended_action_labels, cmapping
+                )
+                ax = fig.add_subplot(2, 1, 1)
+                ax.imshow(adv_colors)
+                ax.axis("off")
             fig.canvas.draw()
             data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep="")
             data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
             segm_images.append(data)
         # score_clip = mpy.ImageSequenceClip(score_plots, fps=8)
-        clip = mpy.ImageSequenceClip(segm_images, fps=8)
+        clip = mpy.ImageSequenceClip(segm_images, fps=args.fps)
         # final_clip = mpy.clips_array([[clip,], [score_clip,]])
         clip.write_videofile(rendered_path)
         print(f"Saved video to {rendered_path}")
