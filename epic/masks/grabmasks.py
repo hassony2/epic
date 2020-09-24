@@ -3,14 +3,14 @@ import numpy as np
 from epic import boxutils
 
 
-def grab_cut(img, bbox, iter_counts=5, margin=10):
+def grab_cut(img, bbox, iter_counts=5, margin=0):
     mask = np.zeros(img.shape[:2], np.uint8)
     if margin:
         bbox = [
             max(0, bbox[0] - margin),
             max(0, bbox[1] - margin),
-            min(img.shape[0], bbox[2] + margin),
-            min(img.shape[1], bbox[3] + margin),
+            min(img.shape[1] - 1, bbox[2] + margin),
+            min(img.shape[0] - 1, bbox[3] + margin),
         ]
     # [x_min, y_min, x_max, y_max] --> [x_min, y_min, width, height]
     grab_bbox = [bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]]

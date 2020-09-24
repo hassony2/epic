@@ -75,7 +75,9 @@ def select_foreground_proposals(
     return fg_proposals, fg_selection_masks
 
 
-def select_proposals_with_visible_keypoints(proposals: List[Instances]) -> List[Instances]:
+def select_proposals_with_visible_keypoints(
+    proposals: List[Instances],
+) -> List[Instances]:
     """
     Args:
         proposals (list[Instances]): a list of N Instances, where N is the
@@ -103,7 +105,9 @@ def select_proposals_with_visible_keypoints(proposals: List[Instances]) -> List[
         # #fg x K x 3
         vis_mask = gt_keypoints[:, :, 2] >= 1
         xs, ys = gt_keypoints[:, :, 0], gt_keypoints[:, :, 1]
-        proposal_boxes = proposals_per_image.proposal_boxes.tensor.unsqueeze(dim=1)  # #fg x 1 x 4
+        proposal_boxes = proposals_per_image.proposal_boxes.tensor.unsqueeze(
+            dim=1
+        )  # #fg x 1 x 4
         kp_in_box = (
             (xs >= proposal_boxes[:, :, 0])
             & (xs <= proposal_boxes[:, :, 2])
@@ -143,7 +147,7 @@ class ROIHeads(torch.nn.Module):
         batch_size_per_image,
         positive_fraction,
         proposal_matcher,
-        proposal_append_gt=True
+        proposal_append_gt=True,
     ):
         """
         NOTE: this interface is experimental.
@@ -179,7 +183,10 @@ class ROIHeads(torch.nn.Module):
         }
 
     def _sample_proposals(
-        self, matched_idxs: torch.Tensor, matched_labels: torch.Tensor, gt_classes: torch.Tensor
+        self,
+        matched_idxs: torch.Tensor,
+        matched_labels: torch.Tensor,
+        gt_classes: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Based on the matching between N proposals and M groundtruth,
@@ -210,7 +217,10 @@ class ROIHeads(torch.nn.Module):
             gt_classes = torch.zeros_like(matched_idxs) + self.num_classes
 
         sampled_fg_idxs, sampled_bg_idxs = subsample_labels(
-            gt_classes, self.batch_size_per_image, self.positive_fraction, self.num_classes
+            gt_classes,
+            self.batch_size_per_image,
+            self.positive_fraction,
+            self.num_classes,
         )
 
         sampled_idxs = torch.cat([sampled_fg_idxs, sampled_bg_idxs], dim=0)
@@ -285,7 +295,9 @@ class ROIHeads(torch.nn.Module):
                 # (by foreground/background, or number of keypoints in the image, etc)
                 # so we essentially index the data twice.
                 for (trg_name, trg_value) in targets_per_image.get_fields().items():
-                    if trg_name.startswith("gt_") and not proposals_per_image.has(trg_name):
+                    if trg_name.startswith("gt_") and not proposals_per_image.has(
+                        trg_name
+                    ):
                         proposals_per_image.set(trg_name, trg_value[sampled_targets])
             else:
                 gt_boxes = Boxes(
@@ -378,7 +390,11 @@ class Res5ROIHeads(ROIHeads):
         if self.mask_on:
             self.mask_head = build_mask_head(
                 cfg,
-                ShapeSpec(channels=out_channels, width=pooler_resolution, height=pooler_resolution),
+                ShapeSpec(
+                    channels=out_channels,
+                    width=pooler_resolution,
+                    height=pooler_resolution,
+                ),
             )
 
     def _build_res5_block(self, cfg):
@@ -501,7 +517,7 @@ class StandardROIHeads(ROIHeads):
         keypoint_pooler: Optional[ROIPooler] = None,
         keypoint_head: Optional[nn.Module] = None,
         train_on_pred_boxes: bool = False,
-        **kwargs
+        **kwargs,
     ):
         """
         NOTE: this interface is experimental.
@@ -584,7 +600,10 @@ class StandardROIHeads(ROIHeads):
         # They are used together so the "box predictor" layers should be part of the "box head".
         # New subclasses of ROIHeads do not need "box predictor"s.
         box_head = build_box_head(
-            cfg, ShapeSpec(channels=in_channels, height=pooler_resolution, width=pooler_resolution)
+            cfg,
+            ShapeSpec(
+                channels=in_channels, height=pooler_resolution, width=pooler_resolution
+            ),
         )
         box_predictor = FastRCNNOutputLayers(cfg, box_head.output_shape)
         return {
@@ -616,7 +635,10 @@ class StandardROIHeads(ROIHeads):
             pooler_type=pooler_type,
         )
         ret["mask_head"] = build_mask_head(
-            cfg, ShapeSpec(channels=in_channels, width=pooler_resolution, height=pooler_resolution)
+            cfg,
+            ShapeSpec(
+                channels=in_channels, width=pooler_resolution, height=pooler_resolution
+            ),
         )
         return ret
 
@@ -642,7 +664,10 @@ class StandardROIHeads(ROIHeads):
             pooler_type=pooler_type,
         )
         ret["keypoint_head"] = build_keypoint_head(
-            cfg, ShapeSpec(channels=in_channels, width=pooler_resolution, height=pooler_resolution)
+            cfg,
+            ShapeSpec(
+                channels=in_channels, width=pooler_resolution, height=pooler_resolution
+            ),
         )
         return ret
 
@@ -701,20 +726,32 @@ class StandardROIHeads(ROIHeads):
         assert instances[0].has("pred_boxes") and instances[0].has("pred_classes")
 
         from detectron2.structures import Instances, Boxes
-        proposals = [Instances(image_size=inst.image_size, proposal_boxes=inst.pred_boxes) for inst in instances]
+
+        proposals = [
+            Instances(image_size=inst.image_size, proposal_boxes=inst.pred_boxes)
+            for inst in instances
+        ]
         instances_tmp = self._forward_box(features, proposals)
         new_instances = []
         for inst, inst_tmp in zip(instances, instances_tmp):
             pred_class = inst_tmp.pred_classes
 
+            # import pdb; pdb.set_trace()
             if inst.pred_classes.shape != pred_class.shape:
-                import pdb; pdb.set_trace()
+                import pdb
+
+                pdb.set_trace()
                 f"Wrong new pred shape {pred_class.shape} for old {inst.pred_classes.shape}"
             # inst.pred_classes = inst_tmp.pred_classes
-            inst = Instances(image_size=inst.image_size, pred_boxes=inst_tmp.pred_boxes, scores=inst_tmp.scores, pred_classes=inst_tmp.pred_classes)
+            inst = Instances(
+                image_size=inst.image_size,
+                pred_boxes=inst.pred_boxes,
+                scores=inst_tmp.scores,
+                pred_classes=inst_tmp.pred_classes,
+            )
             new_instances.append(inst)
-        instances = new_instances
-        instances = self._forward_mask(features, instances)
+        # instances = new_instances
+        instances = self._forward_mask(features, new_instances)
         instances = self._forward_keypoint(features, instances)
         return instances
 
@@ -751,7 +788,9 @@ class StandardROIHeads(ROIHeads):
                     pred_boxes = self.box_predictor.predict_boxes_for_gt_classes(
                         predictions, proposals
                     )
-                    for proposals_per_image, pred_boxes_per_image in zip(proposals, pred_boxes):
+                    for proposals_per_image, pred_boxes_per_image in zip(
+                        proposals, pred_boxes
+                    ):
                         proposals_per_image.proposal_boxes = Boxes(pred_boxes_per_image)
             return losses
         else:

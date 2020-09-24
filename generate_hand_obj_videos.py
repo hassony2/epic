@@ -11,6 +11,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 from PIL import Image
+import torch
 
 # Get FFMPEG outside env for moviepy
 import os
@@ -68,7 +69,7 @@ parser.add_argument("--gt_objects", action="store_true")
 parser.add_argument("--frame_nb", default=100000, type=int)
 parser.add_argument("--frame_step", default=10, type=int)
 parser.add_argument(
-    "--mask_mode", default="grabcut", help=["epic", "predbox", "grabcut"]
+    "--mask_mode", default="grabcut", help=["epic", "maskrcnn", "grabcut"]
 )
 parser.add_argument(
     "--hoa", action="store_true", help="Add predicted hand and object bbox annotations"
@@ -154,12 +155,12 @@ for video_segm_idx in video_segm_idxs:
                     hoa_df=hoa_dets,
                     filter_mode="hoaiou",
                 )
-            elif args.mask_mode == "predbox":
+            elif args.mask_mode == "maskrcnn":
                 mask_extractor = bboxmasks.MaskExtractor()
             elif args.mask_mode == "grabcut":
                 pass
             else:
-                raise ValueError(f"mask_mode {args.mask_mode} not in [epic|predbox]")
+                raise ValueError(f"mask_mode {args.mask_mode} not in [epic|maskrcnn]")
         if args.gt_objects:
             obj_df = labelutils.get_obj_labels(
                 video_id=video_full_id, person_id=video_full_id[:3], interpolate=True
@@ -193,9 +194,13 @@ for video_segm_idx in video_segm_idxs:
                 vid_df = obj_df[obj_df.video_id == video_full_id]
                 if args.gt_objects:
                     boxesgt_df = vid_df[vid_df.frame == frame_idx]
-                    boxgtviz.add_boxesgt_viz(
-                        ax, boxesgt_df, resize_factor=resize_factor, debug=args.debug
-                    )
+                    if args.mask_mode != "maskrcnn":
+                        boxgtviz.add_boxesgt_viz(
+                            ax,
+                            boxesgt_df,
+                            resize_factor=resize_factor,
+                            debug=args.debug,
+                        )
                 if args.hoa:
                     hoa_df = hoa_dets[hoa_dets.frame == frame_idx]
                     hoaviz.add_hoa_viz(
@@ -206,12 +211,23 @@ for video_segm_idx in video_segm_idxs:
                         masksviz.add_masks_df_viz(
                             ax, masks_df, resize_factor, debug=args.debug
                         )
-                    elif args.mask_mode == "predbox":
+                    elif args.mask_mode == "maskrcnn":
                         img = np.array(img)
-                        masks, boxes = mask_extractor.masks_from_df(
-                            img, hoa_df, resize_factor=resize_factor
+                        with torch.no_grad():
+                            res = mask_extractor.masks_from_df(
+                                img, hoa_df, resize_factor=resize_factor
+                            )
+                        labels = [
+                            f"{cls}: {score:.2f}"
+                            for cls, score in zip(res["classes"], res["scores"])
+                        ]
+                        masksviz.add_masks_viz(
+                            ax,
+                            res["masks"],
+                            res["boxes"],
+                            labels=labels,
+                            debug=args.debug,
                         )
-                        masksviz.add_masks_viz(ax, masks, boxes, debug=args.debug)
                     elif args.mask_mode == "grabcut":
                         img = np.array(img)
                         masks, boxes = grabmasks.masks_from_df(

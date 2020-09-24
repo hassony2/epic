@@ -12,7 +12,7 @@ class MaskExtractor:
     def __init__(self):
         cfg = detcfg.get_cfg()
         cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0
-        cfg.MODEL.ROI_HEADS.NMS_THRESH_TEST = 0
+        cfg.MODEL.ROI_HEADS.NMS_THRESH_TEST = 0.5
         cfg.merge_from_file(
             model_zoo.get_config_file(
                 "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"
@@ -23,6 +23,10 @@ class MaskExtractor:
         )
         self.cfg = cfg
         self.predictor = DefaultPredictor(cfg)
+        self.aug = transforms.ResizeShortestEdge(
+            [self.cfg.INPUT.MIN_SIZE_TEST, self.cfg.INPUT.MIN_SIZE_TEST],
+            self.cfg.INPUT.MAX_SIZE_TEST,
+        )
         # sel_classes = ["frisbee", "baseball bat", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange", "broccoli", "carrot", "pizza", "hot dog", "pizza", "donut", "cake", "potted plant", "tv", "laptop", "mouse", "remote", "cell phone", "book", "clock", "vase", "scissors"]
         sel_classes = ["frisbee"]
         self.thing_idxs = [coco.class_names.index(cls) - 1 for cls in sel_classes]
@@ -32,11 +36,7 @@ class MaskExtractor:
             # whether the model expects BGR inputs or RGB
             original_image = original_image[:, :, ::-1]
         height, width = original_image.shape[:2]
-        aug = transforms.ResizeShortestEdge(
-            [self.cfg.INPUT.MIN_SIZE_TEST, self.cfg.INPUT.MIN_SIZE_TEST],
-            self.cfg.INPUT.MAX_SIZE_TEST,
-        )
-        image = aug.get_transform(original_image).apply_image(original_image)
+        image = self.aug.get_transform(original_image).apply_image(original_image)
         image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1)).cuda()
 
         inputs = {"image": image, "height": height, "width": width}
@@ -50,21 +50,22 @@ class MaskExtractor:
         # Initialize boxes
         if not isinstance(boxes, torch.Tensor):
             boxes = torch.Tensor(boxes)
-        boxes = Boxes(boxes)
         if pred_classes is None:
             pred_classes = class_idx * torch.ones(len(boxes)).long()
         else:
             if not isinstance(pred_classes, torch.Tensor):
                 pred_classes = torch.Tensor(pred_classes)
             pred_classes = pred_classes.long()
+        trans_boxes = Boxes(self.aug.get_transform(im).apply_box(boxes))
+        inp_im = self.preprocess_img(im, input_format=input_format)
+        _, height, width = inp_im["image"].shape
         instances = Instances(
-            image_size=(im.shape[0], im.shape[1]),
-            pred_boxes=boxes,
+            image_size=(height, width),
+            pred_boxes=trans_boxes,
             pred_classes=pred_classes,
         )
 
         # Preprocess image
-        inp_im = self.preprocess_img(im, input_format=input_format)
         inf_out = model.inference([inp_im], [instances])
 
         # Extract masks
@@ -99,11 +100,11 @@ class MaskExtractor:
                 img, pred_boxes, pred_classes=pred_classes, input_format=input_format
             )
             masks = res["masks"]
-            masks = [mask.sum(0) for mask in masks.split(len(self.thing_idxs))]
+            masks = [mask.sum(0).detach() for mask in masks.split(len(self.thing_idxs))]
+            res["masks"] = masks
         else:
-            masks = []
-            boxes = []
-        return masks, boxes
+            res = {"masks": [], "boxes": [], "scores": [], "classes": []}
+        return res
 
     def img_inference(self, img, input_format="BGR", score_thresh=0.5):
         model = self.predictor.model

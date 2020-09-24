@@ -26,8 +26,9 @@ def resize_mask(
     return np.asarray(Image.fromarray(mask).resize((width, height), Image.NEAREST))
 
 
-def add_masks_viz(ax, masks, bboxes_norm, mask_alpha=0.6, debug=False):
-    labels = ["coco" for _ in bboxes_norm]
+def add_masks_viz(ax, masks, bboxes_norm, labels=None, mask_alpha=0.6, debug=False):
+    if labels is None:
+        labels = ["coco" for _ in bboxes_norm]
     colors = ["c" for _ in bboxes_norm]
     detect2d.visualize_bboxes(
         ax,
