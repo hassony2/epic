@@ -45,7 +45,8 @@ def add_masks_viz(ax, masks, bboxes_norm, labels=None, mask_alpha=0.6, debug=Fal
         base_mask = base_mask / base_mask.max()
         show_mask = np.concatenate(
             [
-                cm.YlGn(base_mask)[:, :, 0][:, :, :3],
+                # cm.YlGn(base_mask)[:, :, 0][:, :, :3],
+                cm.hot(base_mask)[:, :, 0][:, :, :3],
                 mask_alpha * (base_mask > 0).astype(np.float),
             ],
             2,

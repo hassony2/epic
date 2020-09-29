@@ -1,4 +1,5 @@
 import dominate.tags as dtags
+import warnings
 
 
 def auto_make_cell(path, label=None):
@@ -9,7 +10,12 @@ def auto_make_cell(path, label=None):
             "path": path,
         }
     else:
-        raise ValueError(f"{path} is not valid video path")
+        cell = {
+            "label": "Oops",
+            "type": "txt",
+            "text": str(path),
+        }
+        warnings.warn(f"{path} is not valid video path")
     return cell
 
 

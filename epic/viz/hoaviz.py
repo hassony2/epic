@@ -30,8 +30,8 @@ def get_hoa_color(obj):
     if obj.det_type == "hand":
         if obj.side == "right":
             return "g"
-        elif obj.size == "left":
-            return "r"
+        elif obj.side == "left":
+            return "m"
     else:
         return "k"
 
