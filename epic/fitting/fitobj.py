@@ -1,13 +1,31 @@
 from collections import defaultdict
+import os
 from pathlib import Path
+
+import cv2
 from matplotlib import pyplot as plt
+import numpy as np
 from pytorch3d.io import load_obj as py3dload_obj
 import torch
 from tqdm import tqdm
 
 from epic.rendering.py3drendutils import batch_render
 from epic.lib3d import rotations
-from epic.viz import vizutils
+from libyana.visutils import vizmp
+from libyana.conversions import npt
+from libyana.metrics import iou as lyiou
+from robust_loss_pytorch.adaptive import AdaptiveLossFunction
+
+os.environ["FFMPEG_BINARY"] = "/sequoia/data3/yhasson/miniconda3/bin/ffmpeg"
+import moviepy.editor as mpy
+
+
+def distance_transform(mask, mask_size=5, pixel_scaling=200):
+    mask_np = mask.cpu().detach().numpy().astype(np.uint8)
+    dtf = cv2.distanceTransform(
+        1 - mask_np, distanceType=cv2.DIST_L2, maskSize=mask_size
+    )
+    return 1 - dtf / pixel_scaling
 
 
 def normalize_obj_verts(verts, radius=1):
@@ -24,8 +42,8 @@ def normalize_obj_verts(verts, radius=1):
 
 
 def fitobj2mask(
-    mask,
-    obj_path,
+    masks,
+    obj_paths,
     z_off=0.5,
     radius=0.1,
     lr=0.01,
@@ -33,73 +51,135 @@ def fitobj2mask(
     iters=100,
     viz_step=1,
     save_folder="tmp/",
+    viz_rows=4,
 ):
+    # Initialize logging info
+    opts = {
+        "z_off": z_off,
+        "loss_type": loss_type,
+        "iters": iters,
+        "radius": radius,
+        "lr": lr,
+        "obj_paths": obj_paths,
+    }
+    results = {"opts": opts}
     save_folder = Path(save_folder)
+    metrics = defaultdict(list)
+
+    batch_size = len(obj_paths)
     # Load normalized object
-    verts_loc, faces_idx, _ = py3dload_obj(obj_path)
-    faces = faces_idx.verts_idx.unsqueeze(0).cuda()
-    verts = normalize_obj_verts(verts_loc, radius).unsqueeze(0).cuda()
+    batch_faces = []
+    batch_verts = []
+    for obj_path in obj_paths:
+        verts_loc, faces_idx, _ = py3dload_obj(obj_path)
+        faces = faces_idx.verts_idx
+        batch_faces.append(faces.cuda())
+
+        verts = normalize_obj_verts(verts_loc, radius).cuda()
+        batch_verts.append(verts)
+    batch_verts = torch.stack(batch_verts)
+    batch_faces = torch.stack(batch_faces)
 
     # Dummy intrinsic camera
-    height, width = mask.shape
-    focal = min(mask.shape)
+    height, width = masks[0].shape
+    focal = min(masks[0].shape)
     camintr = (
         torch.Tensor([[focal, 0, width // 2], [0, focal, height // 2], [0, 0, 1]])
         .cuda()
         .unsqueeze(0)
+        .repeat(batch_size, 1, 1)
     )
 
+    adaptive_loss = AdaptiveLossFunction(
+        num_dims=height * width, float_dtype=np.float32, device="cuda:0"
+    )
     # Prepare rigid parameters
-    rot_vec = torch.Tensor([[1, 0, 0, 0, 1, 0]]).cuda()
-    trans = torch.Tensor([[0, 0, z_off]]).cuda()
+    rot_vec = torch.Tensor([[1, 0, 0, 0, 1, 0] for _ in range(batch_size)]).cuda()
+    trans = torch.Tensor([[0, 0, z_off] for _ in range(batch_size)]).cuda()
     trans.requires_grad = True
     rot_vec.requires_grad = True
+    optim_params = [rot_vec, trans]
+    if "adapt" in loss_type:
+        optim_params = optim_params + list(adaptive_loss.parameters())
     optimizer = torch.optim.Adam([rot_vec, trans], lr=lr)
 
+    ref_masks = torch.stack(masks).cuda()
     # Prepare reference mask
-    mask = mask.cuda().unsqueeze(0)
+    if "dtf" in loss_type:
+        target_masks = torch.stack(
+            [torch.Tensor(distance_transform(mask)) for mask in masks]
+        ).cuda()
+    else:
+        target_masks = ref_masks
 
-    col_nb = 3
-    row_nb = len(verts)
-    fig_res = 4
-    metrics = defaultdict(list)
+    col_nb = 5
+    fig_res = 1.5
+    # Aggregate images
+    clip_data = []
     for iter_idx in tqdm(range(iters)):
         rot_mat = rotations.compute_rotation_matrix_from_ortho6d(rot_vec)
-        optim_verts = verts.bmm(rot_mat) + trans
-        res = batch_render(optim_verts, faces, K=camintr, image_sizes=[(width, height)])
-        optim_mask = res[:, :, :, -1]
-        mask_diff = mask - optim_mask
+        optim_verts = batch_verts.bmm(rot_mat) + trans.unsqueeze(1)
+        rendres = batch_render(
+            optim_verts, batch_faces, K=camintr, image_sizes=[(width, height)]
+        )
+        optim_masks = rendres[:, :, :, -1]
+        mask_diff = ref_masks - optim_masks
         mask_l2 = (mask_diff ** 2).mean()
         mask_l1 = mask_diff.abs().mean()
-        if loss_type == "l2":
-            loss = mask_l2
-        elif loss_type == "l1":
-            loss = mask_l1
+        mask_iou = lyiou.batch_mask_iou((optim_masks > 0), (ref_masks > 0)).mean()
+        metrics["l1"].append(mask_l1.item())
+        metrics["l2"].append(mask_l2.item())
+        metrics["mask"].append(mask_iou.item())
+
+        optim_mask_diff = target_masks - optim_masks
+        if "l2" in loss_type:
+            loss = (optim_mask_diff ** 2).mean()
+        elif "l1" in loss_type:
+            loss = optim_mask_diff.abs().mean()
+        elif "adapt" in loss_type:
+            loss = adaptive_loss.lossfun(optim_mask_diff.view(batch_size, -1)).mean()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         if iter_idx % viz_step == 0:
+            row_idxs = np.linspace(0, batch_size - 1, viz_rows).astype(np.int)
+            row_nb = viz_rows
             fig, axes = plt.subplots(
-                1, col_nb, figsize=(int(col_nb * fig_res), int(row_nb * fig_res))
+                row_nb, col_nb, figsize=(int(col_nb * fig_res), int(row_nb * fig_res))
             )
             for row_idx in range(row_nb):
-                ax = vizutils.get_axis(axes, row_idx, 0, row_nb=row_nb, col_nb=col_nb)
-                ax.imshow(vizutils.numpify(optim_mask[row_idx]))
+                show_idx = row_idxs[row_idx]
+                ax = vizmp.get_axis(axes, row_idx, 0, row_nb=row_nb, col_nb=col_nb)
+                ax.imshow(npt.numpify(optim_masks[show_idx]))
                 ax.set_title("optim mask")
-                ax = vizutils.get_axis(axes, row_idx, 1, row_nb=row_nb, col_nb=col_nb)
-                ax.imshow(vizutils.numpify(mask[row_idx]))
+                ax = vizmp.get_axis(axes, row_idx, 1, row_nb=row_nb, col_nb=col_nb)
+                ax.imshow(npt.numpify(ref_masks[show_idx]))
                 ax.set_title("ref mask")
-                ax = vizutils.get_axis(axes, row_idx, 2, row_nb=row_nb, col_nb=col_nb)
-                ax.imshow(vizutils.numpify(mask[row_idx] - optim_mask[row_idx]))
+                ax = vizmp.get_axis(axes, row_idx, 2, row_nb=row_nb, col_nb=col_nb)
+                ax.imshow(
+                    npt.numpify(ref_masks[show_idx] - optim_masks[show_idx]),
+                    vmin=-1,
+                    vmax=1,
+                )
+                ax.set_title("ref masks diff")
+                ax = vizmp.get_axis(axes, row_idx, 3, row_nb=row_nb, col_nb=col_nb)
+                ax.imshow(npt.numpify(target_masks[show_idx]), vmin=-1, vmax=1)
+                ax.set_title("target mask")
+                ax = vizmp.get_axis(axes, row_idx, 4, row_nb=row_nb, col_nb=col_nb)
+                ax.imshow(
+                    npt.numpify(target_masks[show_idx] - optim_masks[show_idx]),
+                    vmin=-1,
+                    vmax=1,
+                )
                 ax.set_title("masks diff")
             viz_folder = save_folder / "viz"
             viz_folder.mkdir(parents=True, exist_ok=True)
+            data = vizmp.fig2np(fig)
+            clip_data.append(data)
             fig.savefig(viz_folder / f"{iter_idx:04d}.png")
 
-    plt.imshow(res[0, :, :, 0].cpu())
-    plt.savefig("tmp.png")
-    plt.imshow(res[0, :, :, -1].cpu())
-    plt.savefig("mask.png")
-    import pdb
-
-    pdb.set_trace()
+    clip = mpy.ImageSequenceClip(clip_data, fps=4)
+    clip.write_videofile(str(viz_folder / "out.mp4"))
+    clip.write_videofile(str(viz_folder / "out.webm"))
+    results["metrics"] = metrics
+    return results

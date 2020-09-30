@@ -93,6 +93,8 @@ mask_extractor = bboxmasks.MaskExtractor()
 
 frame_template = os.path.join(args.epic_root, "{}/{}/{}/frame_{:010d}.jpg")
 fig = plt.figure(figsize=(5, 4))
+dump_list = []
+
 for frame_idx in tqdm(range(args.start_frame, args.end_frame, args.frame_step)):
     frame_name = "frame_{frame_idx:010d}.jpg"
     frame_subpath = f"./{frame_name}"
@@ -124,10 +126,12 @@ for frame_idx in tqdm(range(args.start_frame, args.end_frame, args.frame_step)):
     fig.savefig("tmp.png")
     mask = res["masks"][0]
     if args.pickle_path is not None:
-        with open(args.pickle_path, "wb") as p_f:
-            pickle.dump({"mask": mask, "obj_path": args.obj_path}, p_f)
-            print(f"Saved info to {args.pickle_path}")
-    fitres = fitobj.fitobj2mask(mask, args.obj_path)
-    import pdb
+        dump_list.append({"mask": mask, "obj_path": args.obj_path})
+if args.pickle_path is not None:
+    with open(args.pickle_path, "wb") as p_f:
+        pickle.dump(dump_list, p_f)
+    print(f"Saved info to {args.pickle_path}")
+# fitres = fitobj.fitobj2mask(mask, args.obj_path)
+import pdb
 
-    pdb.set_trace()
+pdb.set_trace()

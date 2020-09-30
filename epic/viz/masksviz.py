@@ -29,14 +29,13 @@ def resize_mask(
 def add_masks_viz(ax, masks, bboxes_norm, labels=None, mask_alpha=0.6, debug=False):
     if labels is None:
         labels = ["coco" for _ in bboxes_norm]
-    colors = ["c" for _ in bboxes_norm]
     detect2d.visualize_bboxes(
         ax,
         bboxes_norm,
         labels=labels,
         label_color="w",
         linewidth=2,
-        color=colors,
+        color="c",
     )
     for mask in masks:
         if isinstance(mask, torch.Tensor):
