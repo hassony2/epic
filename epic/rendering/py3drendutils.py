@@ -1,6 +1,7 @@
 import torch
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import (
+    BlendParams,
     PerspectiveCameras,
     PointLights,
     DirectionalLights,
@@ -8,6 +9,7 @@ from pytorch3d.renderer import (
     MeshRenderer,
     MeshRasterizer,
     SoftPhongShader,
+    SoftSilhouetteShader,
 )
 from pytorch3d.ops import interpolate_face_attributes
 from pytorch3d.renderer.mesh import textures
@@ -23,6 +25,7 @@ def batch_render(
     out_res=512,
     bin_size=0,
     shading="soft",
+    mode="rgb",
 ):
     device = torch.device("cuda:0")
     width, height = image_sizes[0]
@@ -34,8 +37,6 @@ def batch_render(
         bin_size=bin_size,
     )
 
-    lights = PointLights(device=device, location=[[0.0, 0.0, -3.0]])
-    lights = DirectionalLights(device=device)
     fx = K[:, 0, 0]
     fy = K[:, 1, 1]
     focals = torch.stack([fx, fy], 1)
@@ -48,8 +49,13 @@ def batch_render(
         principal_point=principal_point,
         image_size=[(out_size, out_size) for _ in range(len(verts))],
     )
-    if shading == "soft":
+    if mode == "rgb" and shading == "soft":
+        lights = PointLights(device=device, location=[[0.0, 0.0, -3.0]])
+        lights = DirectionalLights(device=device)
         shader = SoftPhongShader(device=device, cameras=cameras, lights=lights)
+    elif mode == "silh":
+        blend_params = BlendParams(sigma=1e-4, gamma=1e-4)
+        shader = SoftSilhouetteShader(blend_params=blend_params)
     elif shading == "faceidx":
         shader = FaceIdxShader()
     elif shading == "facecolor":
@@ -61,8 +67,14 @@ def batch_render(
         rasterizer=MeshRasterizer(cameras=cameras, raster_settings=raster_settings),
         shader=shader,
     )
-    tex = textures.TexturesVertex(verts_features=0.5 * torch.ones_like(verts))
-    meshes = Meshes(verts=verts, faces=faces, textures=tex)
+    if mode == "rgb":
+        tex = textures.TexturesVertex(verts_features=0.5 * torch.ones_like(verts))
+        meshes = Meshes(verts=verts, faces=faces, textures=tex)
+    elif mode == "silh":
+        meshes = Meshes(verts=verts, faces=faces)
+    else:
+        raise ValueError(f"Render mode {mode} not in [rgb|silh]")
+
     square_images = renderer(meshes, cameras=cameras)
     height_off = int(width - height)
     # from matplotlib import pyplot as plt

@@ -68,6 +68,7 @@ parser.add_argument("--end_frame", type=int, default=104474)
 parser.add_argument("--gt_objects", action="store_true")
 parser.add_argument("--frame_nb", default=100000, type=int)
 parser.add_argument("--frame_step", default=10, type=int)
+parser.add_argument("--faces_per_pixel", default=10, type=int)
 parser.add_argument("--pickle_path")
 parser.add_argument(
     "--mask_mode", default="grabcut", help=["epic", "maskrcnn", "grabcut"]

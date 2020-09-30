@@ -46,6 +46,7 @@ def fitobj2mask(
     obj_paths,
     z_off=0.5,
     radius=0.1,
+    faces_per_pixel=1,
     lr=0.01,
     loss_type="l2",
     iters=100,
@@ -61,6 +62,7 @@ def fitobj2mask(
         "radius": radius,
         "lr": lr,
         "obj_paths": obj_paths,
+        "faces_per_pix": faces_per_pixel,
     }
     results = {"opts": opts}
     save_folder = Path(save_folder)
@@ -120,7 +122,12 @@ def fitobj2mask(
         rot_mat = rotations.compute_rotation_matrix_from_ortho6d(rot_vec)
         optim_verts = batch_verts.bmm(rot_mat) + trans.unsqueeze(1)
         rendres = batch_render(
-            optim_verts, batch_faces, K=camintr, image_sizes=[(width, height)]
+            optim_verts,
+            batch_faces,
+            K=camintr,
+            image_sizes=[(width, height)],
+            mode="silh",
+            faces_per_pixel=faces_per_pixel,
         )
         optim_masks = rendres[:, :, :, -1]
         mask_diff = ref_masks - optim_masks
