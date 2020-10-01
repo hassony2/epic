@@ -10,7 +10,8 @@ import torch
 from tqdm import tqdm
 
 from epic.rendering.py3drendutils import batch_render
-from epic.lib3d import rotations
+from epic.lib3d import rotations, ops3d, camutils, normalize
+from epic.lib2d import cropping, boxutils, dtf
 from libyana.visutils import vizmp
 from libyana.conversions import npt
 from libyana.metrics import iou as lyiou
@@ -20,29 +21,9 @@ os.environ["FFMPEG_BINARY"] = "/sequoia/data3/yhasson/miniconda3/bin/ffmpeg"
 import moviepy.editor as mpy
 
 
-def distance_transform(mask, mask_size=5, pixel_scaling=200):
-    mask_np = mask.cpu().detach().numpy().astype(np.uint8)
-    dtf = cv2.distanceTransform(
-        1 - mask_np, distanceType=cv2.DIST_L2, maskSize=mask_size
-    )
-    return 1 - dtf / pixel_scaling
-
-
-def normalize_obj_verts(verts, radius=1):
-    if verts.dim() != 2 or verts.shape[1] != 3:
-        raise ValueError(f"Expected verts in format (vert_nb, 3), got {verts.shape}")
-
-    # Center object
-    verts = verts - verts.mean(0)
-    assert torch.allclose(verts.mean(0), torch.zeros_like(verts.mean(0)), atol=1e-6)
-
-    # Scale
-    verts = radius * verts / verts.norm(2, -1).max()
-    return verts
-
-
 def fitobj2mask(
     masks,
+    bboxes,
     obj_paths,
     z_off=0.5,
     radius=0.1,
@@ -53,6 +34,8 @@ def fitobj2mask(
     viz_step=1,
     save_folder="tmp/",
     viz_rows=4,
+    crop_box=True,
+    crop_size=(200, 200),
 ):
     # Initialize logging info
     opts = {
@@ -77,7 +60,7 @@ def fitobj2mask(
         faces = faces_idx.verts_idx
         batch_faces.append(faces.cuda())
 
-        verts = normalize_obj_verts(verts_loc, radius).cuda()
+        verts = normalize.normalize_verts(verts_loc, radius).cuda()
         batch_verts.append(verts)
     batch_verts = torch.stack(batch_verts)
     batch_faces = torch.stack(batch_faces)
@@ -92,12 +75,24 @@ def fitobj2mask(
         .repeat(batch_size, 1, 1)
     )
 
-    adaptive_loss = AdaptiveLossFunction(
-        num_dims=height * width, float_dtype=np.float32, device="cuda:0"
-    )
+    if crop_box:
+        adaptive_loss = AdaptiveLossFunction(
+            num_dims=crop_size[0] * crop_size[1],
+            float_dtype=np.float32,
+            device="cuda:0",
+        )
+    else:
+        adaptive_loss = AdaptiveLossFunction(
+            num_dims=height * width, float_dtype=np.float32, device="cuda:0"
+        )
     # Prepare rigid parameters
     rot_vec = torch.Tensor([[1, 0, 0, 0, 1, 0] for _ in range(batch_size)]).cuda()
-    trans = torch.Tensor([[0, 0, z_off] for _ in range(batch_size)]).cuda()
+    bboxes = torch.stack(bboxes)
+    trans = ops3d.trans_init_from_boxes(bboxes, camintr, (z_off, z_off))
+    bboxes = boxutils.pad(bboxes)
+    if crop_box:
+        camintr_crop = camutils.get_K_crop_resize(camintr, bboxes, crop_size)
+
     trans.requires_grad = True
     rot_vec.requires_grad = True
     optim_params = [rot_vec, trans]
@@ -106,10 +101,12 @@ def fitobj2mask(
     optimizer = torch.optim.Adam([rot_vec, trans], lr=lr)
 
     ref_masks = torch.stack(masks).cuda()
+    if crop_box:
+        ref_masks = cropping.crops(ref_masks.float(), bboxes, crop_size)[:, 0]
     # Prepare reference mask
     if "dtf" in loss_type:
         target_masks = torch.stack(
-            [torch.Tensor(distance_transform(mask)) for mask in masks]
+            [torch.Tensor(dtf.distance_transform(mask)) for mask in ref_masks]
         ).cuda()
     else:
         target_masks = ref_masks
@@ -121,14 +118,24 @@ def fitobj2mask(
     for iter_idx in tqdm(range(iters)):
         rot_mat = rotations.compute_rotation_matrix_from_ortho6d(rot_vec)
         optim_verts = batch_verts.bmm(rot_mat) + trans.unsqueeze(1)
-        rendres = batch_render(
-            optim_verts,
-            batch_faces,
-            K=camintr,
-            image_sizes=[(width, height)],
-            mode="silh",
-            faces_per_pixel=faces_per_pixel,
-        )
+        if crop_box:
+            rendres = batch_render(
+                optim_verts,
+                batch_faces,
+                K=camintr_crop,
+                image_sizes=[(crop_size[1], crop_size[0])],
+                mode="silh",
+                faces_per_pixel=faces_per_pixel,
+            )
+        else:
+            rendres = batch_render(
+                optim_verts,
+                batch_faces,
+                K=camintr,
+                image_sizes=[(width, height)],
+                mode="silh",
+                faces_per_pixel=faces_per_pixel,
+            )
         optim_masks = rendres[:, :, :, -1]
         mask_diff = ref_masks - optim_masks
         mask_l2 = (mask_diff ** 2).mean()

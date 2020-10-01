@@ -41,6 +41,7 @@ strs = [
     f"{res['opts']['loss_type']} lr {res['opts']['lr']} {res['metrics'][ref_metric][-1]:.2f}"
     for res in results
 ]
+print(df)
 import pdb
 
 pdb.set_trace()
