@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import (
@@ -21,6 +22,8 @@ def batch_render(
     faces_per_pixel=10,
     K=None,
     colors=None,
+    color = (0.53, 0.53, 0.8),  # light_purple
+    # color = (0.74117647, 0.85882353, 0.65098039),  # light_blue
     image_sizes=None,
     out_res=512,
     bin_size=0,
@@ -68,7 +71,10 @@ def batch_render(
         shader=shader,
     )
     if mode == "rgb":
-        tex = textures.TexturesVertex(verts_features=0.5 * torch.ones_like(verts))
+        if colors is None:
+            colors = torch.from_numpy(np.array(color)).view(1, 1, 3).float().cuda().repeat(1, verts.shape[1], 1)
+        tex = textures.TexturesVertex(verts_features=colors)
+
         meshes = Meshes(verts=verts, faces=faces, textures=tex)
     elif mode == "silh":
         meshes = Meshes(verts=verts, faces=faces)
