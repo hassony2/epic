@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 from matplotlib import pyplot as plt
+import moviepy.editor as mpy
 import numpy as np
 from pytorch3d.io import load_obj as py3dload_obj
 from scipy.stats import special_ortho_group 
@@ -17,8 +18,6 @@ from libyana.conversions import npt
 from libyana.metrics import iou as lyiou
 from robust_loss_pytorch.adaptive import AdaptiveLossFunction
 
-os.environ["FFMPEG_BINARY"] = "/sequoia/data3/yhasson/miniconda3/bin/ffmpeg"
-import moviepy.editor as mpy
 
 
 def repeatdim(tens, repeat_nb, undim=0):

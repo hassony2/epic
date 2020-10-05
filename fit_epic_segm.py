@@ -17,6 +17,7 @@ from tqdm import tqdm
 from epic_kitchens.meta import training_labels
 from epic.viz import masksviz
 from epic.hoa import gethoa
+from epic.io.tarutils import TarReader
 
 matplotlib.use("agg")
 try:
@@ -28,17 +29,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--split", default="train", choices=["train", "test"])
 parser.add_argument("--show_adv", action="store_true")
 parser.add_argument(
-    "--epic_root",
-    default=(
-        "/sequoia/data2/yhasson/datasets/epic-kitchen/"
-        "process_yana/frames_rgb_flow/rgb_frames/"
-    ),
+    "--epic_root", default="local_data/datasets/EPIC-KITCHENS",
 )
 parser.add_argument("--fps", default=2, type=int)
 parser.add_argument("--debug", action="store_true")
-parser.add_argument("--video_id", type=str, default="P02_09")
-parser.add_argument("--start_frame", type=int, default=104309)
-parser.add_argument("--end_frame", type=int, default=104474)
+parser.add_argument("--no_tar", action="store_true")
+parser.add_argument("--video_id", type=str, default="P01_01")
+parser.add_argument("--start_frame", type=int, default=1)
+parser.add_argument("--end_frame", type=int, default=104)
 parser.add_argument("--gt_objects", action="store_true")
 parser.add_argument("--frame_nb", default=100000, type=int)
 parser.add_argument("--frame_step", default=10, type=int)
@@ -52,21 +50,32 @@ parser.add_argument(
 )
 parser.add_argument(
     "--hoa_root",
-    default="/sequoia/data2/dataset/epic-100/3l8eci2oqgst92n14w2yqi5ytu/hand-objects/",
+    default="local_data/datasets/epic-hoa",
 )
 parser.add_argument(
     "--obj_path",
     default=(
         "/sequoia/data2/dataset/shapenet/ShapeNetCore.v2/"
-        "02880940/95ac294f47fd7d87e0b49f27ced29e3/models/model_normalized.obj"
+        # Plate
+        # "02880940/95ac294f47fd7d87e0b49f27ced29e3/models/model_normalized.obj"
+        # Bottle
+        "02876657/d851cbc873de1c4d3b6eb309177a6753/models/model_normalized.obj"
     ),
 )
 args = parser.parse_args()
 
+
+if not args.no_tar:
+    tareader = TarReader()
+
 # Load hand object detections
 hoa_dets = gethoa.load_video_hoa(args.video_id, hoa_root=args.hoa_root)
 resize_factor = 456 / 1920  # from original to target resolution
-annot_df = training_labels()
+# Epic-55 annotations
+# annot_df = training_labels()
+# Epic-100 annotations
+with open(f"assets/EPIC_100_{args.split}.pkl", "rb") as p_f:
+    annot_df = pickle.load(p_f)
 video_df = annot_df[annot_df.video_id == args.video_id]
 # extended_action_labels, dense_df = labelutils.extend_action_labels(video_df)
 mask_extractor = bboxmasks.MaskExtractor()
@@ -88,31 +97,41 @@ for frame_idx in tqdm(
     img_path = frame_template.format(
         args.split, args.video_id[:3], args.video_id, frame_idx
     )
+    if args.no_tar:
+        img = Image.open(img_path)
+        img = np.array(img)
+    else:
+        img = tareader.read_tar_frame(img_path)
+        img = img[:, :, ::-1]
+
     print(img_path)
     label = f"fr{frame_idx}"
-    img = Image.open(img_path)
-    img = np.array(img)
     ax.imshow(img)
     hoa_df = hoa_dets[hoa_dets.frame == frame_idx]
     with torch.no_grad():
         res = mask_extractor.masks_from_df(
             img, hoa_df, resize_factor=resize_factor
         )
-    labels = [
-        f"{cls}: {score:.2f}"
-        for cls, score in zip(res["classes"], res["scores"])
-    ]
-    masksviz.add_masks_viz(
-        ax, res["masks"], res["boxes"], labels=labels, debug=args.debug
-    )
-    fig.savefig("tmp.png")
-    mask = res["masks"][0]
-    boxes = res["boxes"][0]
-    print(boxes)
-    if args.pickle_path is not None:
-        dump_list.append(
-            {"mask": mask, "boxes": boxes, "obj_path": args.obj_path}
-        )
+        if len(res["masks"]):
+            labels = [
+                f"{cls}: {score:.2f}"
+                for cls, score in zip(res["classes"], res["scores"])
+            ]
+            masksviz.add_masks_viz(
+                ax, res["masks"], res["boxes"], labels=labels, debug=args.debug
+            )
+            mask = res["masks"][0]
+            boxes = res["boxes"][0]
+        else:
+            mask = None
+            boxes = None
+        if args.debug:
+            fig.savefig("tmp.png")
+        print(boxes)
+        if args.pickle_path is not None:
+            dump_list.append(
+                {"mask": mask, "boxes": boxes, "obj_path": args.obj_path}
+            )
 if args.pickle_path is not None:
     with open(args.pickle_path, "wb") as p_f:
         pickle.dump(dump_list, p_f)

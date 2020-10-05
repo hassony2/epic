@@ -4,21 +4,12 @@ from pathlib import Path
 import traceback
 
 import matplotlib
-
-matplotlib.use("agg")
 from matplotlib import pyplot as plt
-
+import moviepy.editor as mpy
 import numpy as np
 import pandas as pd
 from PIL import Image
 import torch
-
-# Get FFMPEG outside env for moviepy
-import os
-
-os.environ["FFMPEG_BINARY"] = "/sequoia/data3/yhasson/miniconda3/bin/ffmpeg"
-import moviepy.editor as mpy
-
 from tqdm import tqdm
 
 from epic_kitchens.meta import training_labels
@@ -38,7 +29,9 @@ from epic import labelutils
 from epic.viz import hoaviz, boxgtviz, masksviz
 from epic.hoa import gethoa
 from epic.masks import grabmasks
+from epic.hpose import handviz
 
+matplotlib.use("agg")
 try:
     from epic.masks import bboxmasks
 except Exception:
@@ -48,7 +41,11 @@ try:
     from epic.masks import getmasks
 except Exception:
     traceback.print_exc()
-from epic.hpose import handposes, handviz
+
+try:
+    from epic.hpose import handposes
+except Exception:
+    traceback.print_exc()
 
 
 parser = argparse.ArgumentParser()
@@ -56,7 +53,7 @@ parser.add_argument("--split", default="train", choices=["train", "test"])
 parser.add_argument("--show_adv", action="store_true")
 parser.add_argument(
     "--epic_root",
-    default="/sequoia/data2/yhasson/datasets/epic-kitchen/process_yana/frames_rgb_flow/rgb_frames/",
+    default="local_data/datasets/EPIC-KITCHENS",
 )
 parser.add_argument("--use_tar", action="store_true")
 parser.add_argument("--fps", default=2, type=int)
@@ -77,7 +74,7 @@ parser.add_argument(
 parser.add_argument("--hands", action="store_true", help="Add predicted hand poses")
 parser.add_argument(
     "--hoa_root",
-    default="/sequoia/data2/dataset/epic-100/3l8eci2oqgst92n14w2yqi5ytu/hand-objects/",
+    default="local_data/datasets/epic-hoa",
 )
 args = parser.parse_args()
 
@@ -261,6 +258,7 @@ for video_segm_idx in video_segm_idxs:
                 fig.savefig("tmp/tmp{frame_idx}.png")
             segm_images.append(data)
         # score_clip = mpy.ImageSequenceClip(score_plots, fps=8)
+        import pdb; pdb.set_trace()
         clip = mpy.ImageSequenceClip(segm_images, fps=args.fps)
         # final_clip = mpy.clips_array([[clip,], [score_clip,]])
         clip.write_videofile(rendered_path)

@@ -24,12 +24,12 @@ from epic.hoa import gethoa
 from epic.masks import getmasks
 from epic.viz import hoaviz, boxgtviz
 from epic.hpose import handposes, handviz
+from epic.io.tarutils import TarReader
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--split", default="train", choices=["train", "test"])
 parser.add_argument(
-    "--epic_root",
-    default="/sequoia/data2/yhasson/datasets/epic-kitchen/process_yana/frames_rgb_flow/rgb_frames/",
+    "--epic_root", default="local_data/datasets/EPIC-KITCHENS",
 )
 parser.add_argument("--use_tar", action="store_true")
 parser.add_argument("--video_id", default=1, type=int)
@@ -44,13 +44,15 @@ parser.add_argument(
 )
 parser.add_argument(
     "--hoa_root",
-    default="/sequoia/data2/dataset/epic-100/3l8eci2oqgst92n14w2yqi5ytu/hand-objects/",
+    default="local_data/datasets/epic-hoa",
 )
 args = parser.parse_args()
 
 args.video_id = f"{args.video_id:02d}"
 args.person_id = f"P{args.person_id:02d}"
 
+if not args.no_tar:
+    tareader = TarReader()
 for key, val in vars(args).items():
     print(f"{key}: {val}")
 
