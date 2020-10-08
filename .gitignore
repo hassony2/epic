@@ -1,4 +1,5 @@
 *.sw*
+local_data/
 __pycache__/
 results/
 tmp*

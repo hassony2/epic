@@ -1,19 +1,16 @@
 import argparse
 from copy import deepcopy
-import os
 from pathlib import Path
 import warnings
 
-from matplotlib import pyplot as plt
-import torch
-import numpy as np
 import pickle
 import pandas as pd
-from epic.lib3d import rotations
+from libyana.exputils import argutils
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--save_root", default="tmp")
 args = parser.parse_args()
+argutils.print_args(args)
 
 save_root = Path(args.save_root)
 results = []
@@ -38,10 +35,10 @@ ref_metric = "mask"
 df = df.sort_values(ref_metric)
 results = sorted(results, key=lambda res: res["metrics"][ref_metric][-1])
 strs = [
-    f"{res['opts']['loss_type']} lr {res['opts']['lr']} {res['metrics'][ref_metric][-1]:.2f}"
+    (
+        f"{res['opts']['loss_type']} lr {res['opts']['lr']}"
+        f"{res['metrics'][ref_metric][-1]:.2f}"
+    )
     for res in results
 ]
 print(df)
-import pdb
-
-pdb.set_trace()

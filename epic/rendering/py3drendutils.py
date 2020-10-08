@@ -21,8 +21,9 @@ def batch_render(
     faces,
     faces_per_pixel=10,
     K=None,
+    rot=None,
     colors=None,
-    color = (0.53, 0.53, 0.8),  # light_purple
+    color=(0.53, 0.53, 0.8),  # light_purple
     # color = (0.74117647, 0.85882353, 0.65098039),  # light_blue
     image_sizes=None,
     out_res=512,
@@ -46,11 +47,14 @@ def batch_render(
     px = K[:, 0, 2]
     py = K[:, 1, 2]
     principal_point = torch.stack([width - px, height - py], 1)
+    if rot is None:
+        rot = torch.eye(3).unsqueeze(0)
     cameras = PerspectiveCameras(
         device=device,
         focal_length=focals,
         principal_point=principal_point,
         image_size=[(out_size, out_size) for _ in range(len(verts))],
+        R=rot,
     )
     if mode == "rgb" and shading == "soft":
         lights = PointLights(device=device, location=[[0.0, 0.0, -3.0]])
@@ -67,12 +71,20 @@ def batch_render(
         raise ValueError(f"{shading} not in [facecolor|faceidx|soft]")
 
     renderer = MeshRenderer(
-        rasterizer=MeshRasterizer(cameras=cameras, raster_settings=raster_settings),
+        rasterizer=MeshRasterizer(
+            cameras=cameras, raster_settings=raster_settings
+        ),
         shader=shader,
     )
     if mode == "rgb":
         if colors is None:
-            colors = torch.from_numpy(np.array(color)).view(1, 1, 3).float().cuda().repeat(1, verts.shape[1], 1)
+            colors = (
+                torch.from_numpy(np.array(color))
+                .view(1, 1, 3)
+                .float()
+                .cuda()
+                .repeat(1, verts.shape[1], 1)
+            )
         tex = textures.TexturesVertex(verts_features=colors)
 
         meshes = Meshes(verts=verts, faces=faces, textures=tex)
@@ -101,7 +113,9 @@ class FaceColorShader(torch.nn.Module):
         super().__init__()
         batch_s, face_nb, color_nb = face_colors.shape
         vert_face_colors = face_colors.unsqueeze(2).repeat(1, 1, 3, 1)
-        self.face_colors = vert_face_colors.view(batch_s * face_nb, 3, color_nb).float()
+        self.face_colors = vert_face_colors.view(
+            batch_s * face_nb, 3, color_nb
+        ).float()
 
     def forward(self, fragments, meshes, **kwargs):
 

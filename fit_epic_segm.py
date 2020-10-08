@@ -29,7 +29,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--split", default="train", choices=["train", "test"])
 parser.add_argument("--show_adv", action="store_true")
 parser.add_argument(
-    "--epic_root", default="local_data/datasets/EPIC-KITCHENS",
+    "--epic_root",
+    default="local_data/datasets/EPIC-KITCHENS",
 )
 parser.add_argument("--fps", default=2, type=int)
 parser.add_argument("--debug", action="store_true")
@@ -75,13 +76,15 @@ camintr = np.array([[focal, 0, 456 // 2], [0, focal, 256 // 2], [0, 0, 1]])
 hoa_dets = gethoa.load_video_hoa(args.video_id, hoa_root=args.hoa_root)
 
 # Load hand pose estimator
-hand_checkpoint = ("assets/handmocap/extra_data/hand_module/"
-                   "pretrained_weights/pose_shape_best.pth")
+hand_checkpoint = (
+    "assets/handmocap/extra_data/hand_module/"
+    "pretrained_weights/pose_shape_best.pth"
+)
 smpl_folder = "assets/handmocap/extra_data/smpl"
 hand_extractor = handposes.HandExtractor(hand_checkpoint, smpl_folder)
 
 # Epic-55 annotations
-# annot_df = training_labels()
+annot_df = training_labels()
 # Epic-100 annotations
 with open(f"assets/EPIC_100_{args.split}.pkl", "rb") as p_f:
     annot_df = pickle.load(p_f)
@@ -123,7 +126,9 @@ for frame_idx in tqdm(
             img, hoa_df, resize_factor=resize_factor
         )
         # Extract hands
-        pred_hands = hand_extractor.hands_from_df(img, hoa_df, resize_factor=resize_factor)
+        pred_hands = hand_extractor.hands_from_df(
+            img, hoa_df, resize_factor=resize_factor
+        )
 
         if len(pred_hands):
             # Draw hand renderings
@@ -133,7 +138,7 @@ for frame_idx in tqdm(
             hoaviz.add_hoa_viz(
                 ax, hoa_df, resize_factor=resize_factor, debug=args.debug
             )
-        if len(res["masks"]): # TODO remove
+        if len(res["masks"]):  # TODO remove
             labels = [
                 f"{cls}: {score:.2f}"
                 for cls, score in zip(res["classes"], res["scores"])
@@ -148,10 +153,18 @@ for frame_idx in tqdm(
             boxes = None
         if args.debug:
             fig.savefig(f"tmp_{frame_idx:05d}.png")
-        print(boxes)
         if args.pickle_path is not None:
             dump_list.append(
-                {"mask": mask, "boxes": boxes, "obj_path": args.obj_path, "hands": pred_hands}
+                {
+                    "mask": mask,
+                    "boxes": boxes,
+                    "obj_path": args.obj_path,
+                    "hands": pred_hands,
+                    "img_path": img_path,
+                    "resize_factor": resize_factor,
+                    "video_id": args.video_id,
+                    "frame_idx": frame_idx,
+                }
             )
 if args.pickle_path is not None:
     with open(args.pickle_path, "wb") as p_f:

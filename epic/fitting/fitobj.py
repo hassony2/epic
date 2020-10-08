@@ -1,12 +1,11 @@
 from collections import defaultdict
-import os
 from pathlib import Path
 
 from matplotlib import pyplot as plt
 import moviepy.editor as mpy
 import numpy as np
 from pytorch3d.io import load_obj as py3dload_obj
-from scipy.stats import special_ortho_group 
+from scipy.stats import special_ortho_group
 import torch
 from tqdm import tqdm
 
@@ -19,10 +18,9 @@ from libyana.metrics import iou as lyiou
 from robust_loss_pytorch.adaptive import AdaptiveLossFunction
 
 
-
 def repeatdim(tens, repeat_nb, undim=0):
     """
-    Creates copies of tensor 
+    Creates copies of tensor
     """
     if repeat_nb == 1:
         flat_tens = tens
@@ -65,6 +63,7 @@ def fitobj2mask(
     }
     results = {"opts": opts}
     save_folder = Path(save_folder)
+    print(f"Saving to {save_folder}")
     metrics = defaultdict(list)
 
     batch_size = len(obj_paths)
@@ -85,7 +84,9 @@ def fitobj2mask(
     height, width = masks[0].shape
     focal = min(masks[0].shape)
     camintr = (
-        torch.Tensor([[focal, 0, width // 2], [0, focal, height // 2], [0, 0, 1]])
+        torch.Tensor(
+            [[focal, 0, width // 2], [0, focal, height // 2], [0, 0, 1]]
+        )
         .cuda()
         .unsqueeze(0)
         .repeat(batch_size, 1, 1)
@@ -104,17 +105,24 @@ def fitobj2mask(
     # Prepare rigid parameters
     if rot_nb > 1:
         rot_mats = [special_ortho_group.rvs(3) for _ in range(rot_nb)]
-        rot_vecs = torch.Tensor([np.linalg.svd(rot_mat)[0][:2].reshape(-1) for rot_mat in rot_mats])
-        rot_vec = rot_vecs.repeat(batch_size, 1) .cuda()
+        rot_vecs = torch.Tensor(
+            [np.linalg.svd(rot_mat)[0][:2].reshape(-1) for rot_mat in rot_mats]
+        )
+        rot_vec = rot_vecs.repeat(batch_size, 1).cuda()
         # Ordering b1 rot1, b1 rot2, ..., b2 rot1, ...
     else:
-        rot_vec = torch.Tensor([[1, 0, 0, 0, 1, 0] for _ in range(batch_size)]).cuda()
+        rot_vec = torch.Tensor(
+            [[1, 0, 0, 0, 1, 0] for _ in range(batch_size)]
+        ).cuda()
 
-    bboxes = torch.stack(bboxes)
-    trans = ops3d.trans_init_from_boxes(bboxes, camintr, (z_off, z_off)).cuda()
+    bboxes_tight = torch.stack(bboxes)
+    # trans = ops3d.trans_init_from_boxes(bboxes, camintr, (z_off, z_off)).cuda()
+    trans = ops3d.trans_init_from_boxes_autodepth(
+        bboxes_tight, camintr, batch_verts, z_guess=z_off
+    ).cuda()
     # Repeat to match rots
     trans = repeatdim(trans, rot_nb, 1)
-    bboxes = boxutils.pad(bboxes)
+    bboxes = boxutils.preprocess_boxes(bboxes_tight, padding=10, squarify=True)
     if crop_box:
         camintr_crop = camutils.get_K_crop_resize(camintr, bboxes, crop_size)
     camintr_crop = repeatdim(camintr_crop, rot_nb, 1)
@@ -171,7 +179,9 @@ def fitobj2mask(
         mask_diff = ref_masks - optim_masks
         mask_l2 = (mask_diff ** 2).mean()
         mask_l1 = mask_diff.abs().mean()
-        mask_iou = lyiou.batch_mask_iou((optim_masks > 0), (ref_masks > 0)).mean()
+        mask_iou = lyiou.batch_mask_iou(
+            (optim_masks > 0), (ref_masks > 0)
+        ).mean()
         metrics["l1"].append(mask_l1.item())
         metrics["l2"].append(mask_l2.item())
         metrics["mask"].append(mask_iou.item())
@@ -182,37 +192,55 @@ def fitobj2mask(
         elif "l1" in loss_type:
             loss = optim_mask_diff.abs().mean()
         elif "adapt" in loss_type:
-            loss = adaptive_loss.lossfun(optim_mask_diff.view(rot_nb * batch_size, -1)).mean()
+            loss = adaptive_loss.lossfun(
+                optim_mask_diff.view(rot_nb * batch_size, -1)
+            ).mean()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         if iter_idx % viz_step == 0:
-            row_idxs = np.linspace(0, batch_size * rot_nb - 1, viz_rows).astype(np.int)
+            row_idxs = np.linspace(
+                0, batch_size * rot_nb - 1, viz_rows
+            ).astype(np.int)
             row_nb = viz_rows
             fig, axes = plt.subplots(
-                row_nb, col_nb, figsize=(int(col_nb * fig_res), int(row_nb * fig_res))
+                row_nb,
+                col_nb,
+                figsize=(int(col_nb * fig_res), int(row_nb * fig_res)),
             )
             for row_idx in range(row_nb):
                 show_idx = row_idxs[row_idx]
-                ax = vizmp.get_axis(axes, row_idx, 0, row_nb=row_nb, col_nb=col_nb)
+                ax = vizmp.get_axis(
+                    axes, row_idx, 0, row_nb=row_nb, col_nb=col_nb
+                )
                 ax.imshow(npt.numpify(optim_masks[show_idx]))
                 ax.set_title("optim mask")
-                ax = vizmp.get_axis(axes, row_idx, 1, row_nb=row_nb, col_nb=col_nb)
+                ax = vizmp.get_axis(
+                    axes, row_idx, 1, row_nb=row_nb, col_nb=col_nb
+                )
                 ax.imshow(npt.numpify(ref_masks[show_idx]))
                 ax.set_title("ref mask")
-                ax = vizmp.get_axis(axes, row_idx, 2, row_nb=row_nb, col_nb=col_nb)
+                ax = vizmp.get_axis(
+                    axes, row_idx, 2, row_nb=row_nb, col_nb=col_nb
+                )
                 ax.imshow(
                     npt.numpify(ref_masks[show_idx] - optim_masks[show_idx]),
                     vmin=-1,
                     vmax=1,
                 )
                 ax.set_title("ref masks diff")
-                ax = vizmp.get_axis(axes, row_idx, 3, row_nb=row_nb, col_nb=col_nb)
+                ax = vizmp.get_axis(
+                    axes, row_idx, 3, row_nb=row_nb, col_nb=col_nb
+                )
                 ax.imshow(npt.numpify(target_masks[show_idx]), vmin=-1, vmax=1)
                 ax.set_title("target mask")
-                ax = vizmp.get_axis(axes, row_idx, 4, row_nb=row_nb, col_nb=col_nb)
+                ax = vizmp.get_axis(
+                    axes, row_idx, 4, row_nb=row_nb, col_nb=col_nb
+                )
                 ax.imshow(
-                    npt.numpify(target_masks[show_idx] - optim_masks[show_idx]),
+                    npt.numpify(
+                        target_masks[show_idx] - optim_masks[show_idx]
+                    ),
                     vmin=-1,
                     vmax=1,
                 )
