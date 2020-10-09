@@ -83,7 +83,7 @@ def batch_render(
                 .view(1, 1, 3)
                 .float()
                 .cuda()
-                .repeat(1, verts.shape[1], 1)
+                .repeat(verts.shape[0], verts.shape[1], 1)
             )
         tex = textures.TexturesVertex(verts_features=colors)
 

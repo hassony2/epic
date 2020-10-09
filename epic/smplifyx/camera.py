@@ -101,7 +101,7 @@ class PerspectiveCamera(nn.Module):
         translation = nn.Parameter(translation, requires_grad=True)
         self.register_parameter("translation", translation)
 
-    def forward(self, points):
+    def forward(self, points, z_min=0.1):
         device = points.device
         batch_size = points.shape[0]
 
@@ -125,9 +125,12 @@ class PerspectiveCamera(nn.Module):
             "bki,bji->bjk", [camera_transform, points_h]
         )
 
+        # Push denominator away from 0 to avoid nans
+        denom = projected_points[:, :, 2]
+        denom = torch.max(torch.ones_like(denom) * z_min, denom)
         img_points = torch.div(
             projected_points[:, :, :2],
-            projected_points[:, :, 2].unsqueeze(dim=-1),
+            denom.unsqueeze(dim=-1),
         )
         center = self.center.repeat(batch_size, 1)
         img_points = torch.einsum(
