@@ -1,4 +1,15 @@
 import torch
+from scipy.stats import special_ortho_group
+import numpy as np
+
+
+def get_rotvec6d(random_rot=False):
+    if random_rot:
+        rot_vec = torch.Tensor([1, 0, 0, 0, 1, 0])
+    else:
+        rot_mat = special_ortho_group.rvs(3)
+        rot_vec = torch.Tensor(np.linalg.svd(rot_mat)[0][:2].reshape(-1))
+    return rot_vec
 
 
 def compute_rotation_matrix_from_ortho6d(poses, bias_id=0):
@@ -128,7 +139,9 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
 
     if not quaternion.shape[-1] == 4:
         raise ValueError(
-            "Input must be a tensor of shape Nx4 or 4. Got {}".format(quaternion.shape)
+            "Input must be a tensor of shape Nx4 or 4. Got {}".format(
+                quaternion.shape
+            )
         )
     # unpack input and compute conversion
     q1: torch.Tensor = quaternion[..., 1]

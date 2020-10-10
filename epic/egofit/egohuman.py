@@ -1,30 +1,25 @@
-import pickle
-
-import numpy as np
 import torch
 from human_body_prior.tools.model_loader import load_vposer
 from epic.smplifyx import (
-    prior,
     vposeutils,
     smplvis,
     smplutils,
 )
-from epic.io.tarutils import TarReader
 
 
-class EgoHuman:
+class EgoHuman(torch.nn.Module):
     def __init__(
         self,
         debug=True,
+        batch_size=0,
         hand_pca_nb=6,
         head_center_idx=8949,
-        mano_corresp_path="assets/models/MANO_SMPLX_vertex_ids.pkl",
         smpl_root="assets/models",
         vposer_dir="assets/vposer",
         vposer_dim=32,
-        data_weight=1000 / 256,
         parts_path="assets/models/smplx/smplx_parts_segm.pkl",
     ):
+        super().__init__()
         self.debug = debug
         self.hand_pca_nb = hand_pca_nb
         self.head_center_idx = head_center_idx
@@ -36,36 +31,36 @@ class EgoHuman:
             model_root=smpl_root, vposer_dir=vposer_dir
         )
         self.smpl_f = self.smpl_model.faces
-        with open(mano_corresp_path, "rb") as p_f:
-            self.mano_corresp = pickle.load(p_f)
         # Get vposer
         self.vposer = load_vposer(vposer_dir, vp_model="snapshot")[0]
         self.vposer.eval()
-        self.tareader = TarReader()
 
         # Translate human so that head is at camera level
         self.set_head2cam_trans()
 
         self.armfaces = smplvis.filter_parts(self.smpl_f, parts_path)
 
-        # Initialize priors
-        self.body_pose_prior = prior.create_prior(prior_type="l2")
-        self.hand_pca_nb = hand_pca_nb
-        self.left_hand_prior = prior.create_prior(
-            prior_type="l2",
-            use_left_hand=True,
-            num_gaussians=hand_pca_nb,
+        # Initialize model parameters
+        self.batch_size = batch_size
+        left_hand_pose = self.smpl_model.left_hand_pose.repeat(batch_size, 1)
+        right_hand_pose = self.smpl_model.right_hand_pose.repeat(batch_size, 1)
+        pose_embedding = (
+            self.get_neutral_pose_embedding()
+            .unsqueeze(0)
+            .repeat(batch_size, 1)
         )
-        self.right_hand_prior = prior.create_prior(
-            prior_type="l2",
-            use_right_hand=True,
-            num_gaussians=hand_pca_nb,
+        self.pose_embedding = torch.nn.Parameter(
+            pose_embedding, requires_grad=True
         )
-        self.angle_prior = prior.create_prior(prior_type="angle")
-        self.shape_prior = prior.create_prior(prior_type="l2")
+        self.left_hand_pose = torch.nn.Parameter(
+            left_hand_pose, requires_grad=True
+        )
+        self.right_hand_pose = torch.nn.Parameter(
+            right_hand_pose, requires_grad=True
+        )
 
     def set_head2cam_trans(self):
-        pose_embedding = torch.zeros([1, self.vposer_dim])
+        pose_embedding = self.get_neutral_pose_embedding().unsqueeze(0)
         vpose = vposeutils.get_vposer_pose(
             self.smpl_model, self.vposer, pose_embedding
         )
@@ -77,25 +72,18 @@ class EgoHuman:
             head_loc + head_loc.new([0, 0, 0.1])
         )
 
-        vpose = vposeutils.get_vposer_pose(
-            self.smpl_model, self.vposer, pose_embedding
-        )
-        smplx_verts = self.smpl_model(
-            betas=self.smpl_model.betas, body_pose=vpose, return_verts=True
-        ).vertices
-
-    def smpl_forward(
-        self, body_pose=None, right_hand_pose=None, left_hand_pose=None
-    ):
+    def forward(self):
         smpl_params = smplutils.prepare_params(
-            self.smpl_model, body_pose.shape[0]
+            self.smpl_model, self.batch_size
         )
-        if right_hand_pose is not None:
-            smpl_params["right_hand_pose"] = right_hand_pose
-        if left_hand_pose is not None:
-            smpl_params["left_hand_pose"] = left_hand_pose
-        if body_pose is not None:
-            smpl_params["body_pose"] = left_hand_pose
+        # Override hand and body pose
+        smpl_params["right_hand_pose"] = self.right_hand_pose
+        smpl_params["left_hand_pose"] = self.left_hand_pose
+        body_pose = vposeutils.get_vposer_pose(
+            self.smpl_model, self.vposer, self.pose_embedding
+        )
+        smpl_params["body_pose"] = body_pose
+        # Compute body model
         body_model_output = self.smpl_model(
             body_pose=body_pose,
             expression=smpl_params["expression"],
@@ -111,92 +99,25 @@ class EgoHuman:
         )
         return body_model_output
 
-    def smpl_forward_vposer(
-        self, pose_embedding, right_hand_pose=None, left_hand_pose=None
+    def get_params(
+        self,
+        param_names=["pose_embedding", "left_hand_pose", "right_hand_pose"],
     ):
-        body_pose = vposeutils.get_vposer_pose(
-            self.smpl_model, self.vposer, pose_embedding
-        )
-        body_model_output = self.smpl_forward(
-            body_pose=body_pose,
-            right_hand_pose=right_hand_pose,
-            left_hand_pose=left_hand_pose,
-        )
-        return body_model_output
-
-    def preprocess_supervision(self, fit_infos):
-        sample_masks = []
-        sample_verts = []
-        sample_confs = []
-        sample_imgs = []
-        for fit_info in fit_infos:
-            img = self.tareader.read_tar_frame(fit_info["img_path"])
-            # img = cv2.imread(fit_info["img_path"])
-            hand_infos = fit_info["hands"]
-            human_verts = np.zeros((self.smplx_vertex_nb, 3))
-            verts_confs = np.zeros((self.smplx_vertex_nb,))
-            # Get hand vertex refernces poses
-            for side in ["left", "right"]:
-                if side in hand_infos:
-                    hand_info = hand_infos[side]
-                    hand_verts = hand_info["verts"]
-                    corresp = self.mano_corresp[f"{side}_hand"]
-                    human_verts[corresp] = hand_verts
-                    verts_confs[corresp] = 1
-            sample_masks.append(fit_info["mask"])
-            sample_verts.append(human_verts)
-            sample_confs.append(verts_confs)
-            sample_imgs.append(img)
-        fit_data = {
-            "masks": torch.stack(sample_masks),
-            "verts": torch.Tensor(np.stack(sample_verts)),
-            "verts_confs": torch.Tensor(np.stack(sample_confs)),
-            "imgs": sample_imgs,
-        }
-        return fit_data
-
-    def get_optim_params(self, optim_shape=False, batch_size=1):
-        smpl_model = self.smpl_model
-        smpl_model.global_orient.requires_grad = False
-        smpl_model.transl.requires_grad = False
-        smpl_model.leye_pose.requires_grad = False
-        smpl_model.reye_pose.requires_grad = False
-        smpl_model.jaw_pose.requires_grad = False
-        smpl_model.expression.requires_grad = False
-        smpl_model.body_pose.requires_grad = False
-        if not optim_shape:
-            smpl_model.betas.requires_grad = False
-
-        # Check that all gradients are set correctly
-        params_to_optim = {
-            name: param
-            for name, param in smpl_model.named_parameters()
-            if param.requires_grad
-        }
-        optim_params = ["left_hand_pose", "right_hand_pose"]
-        if optim_shape:
-            optim_params.append("betas")
-        assert sorted(list(params_to_optim.keys())) == sorted(optim_params)
-        pose_embedding = (
-            self.get_neutral_pose_embedding()
-            .unsqueeze(0)
-            .repeat(batch_size, 1)
-        )
-        left_hand_pose = smpl_model.left_hand_pose.repeat(
-            batch_size, 1
-        ).detach()
-        right_hand_pose = smpl_model.right_hand_pose.repeat(
-            batch_size, 1
-        ).detach()
-        left_hand_pose.requires_grad = True
-        left_hand_pose.requires_grad = True
-        pose_embedding.requires_grad = True
-
-        optim_params = {}
-        optim_params["pose_embedding"] = pose_embedding
-        optim_params["left_hand_pose"] = left_hand_pose
-        optim_params["right_hand_pose"] = right_hand_pose
-        return optim_params
+        """
+        Get parameters to optimize
+        """
+        params = [
+            self.right_hand_pose,
+            self.left_hand_pose,
+            self.pose_embedding,
+        ]
+        for param_name, param_vals in self.named_parameters():
+            if param_name in param_names:
+                param_vals.requires_grad = True
+                params.append(param_vals)
+            else:
+                param_vals.requires_grad = False
+        return params
 
     def get_neutral_pose_embedding(self):
         pose_embedding = torch.Tensor(
