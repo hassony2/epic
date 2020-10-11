@@ -12,6 +12,7 @@ class ManipulatedObject(torch.nn.Module):
         obj_path,
         bboxes,
         camintr,
+        camextr=None,
         debug=True,
         radius=0.1,
         random_rot=True,
@@ -44,14 +45,16 @@ class ManipulatedObject(torch.nn.Module):
             torch.Tensor(bboxes), padding=10, squarify=True
         )
         batch_camintr = camintr.unsqueeze(0).repeat(len(bboxes), 1, 1)
+        batch_camextr = camextr.unsqueeze(0).repeat(len(bboxes), 1, 1)
         verts = norm_verts.unsqueeze(0).repeat(len(bboxes), 1, 1)
         trans = ops3d.trans_init_from_boxes_autodepth(
-            bboxes, batch_camintr, verts, z_guess=z_off
+            bboxes, batch_camintr, verts, z_guess=z_off, camextr=batch_camextr
         )
+
         self.trans = torch.nn.Parameter(trans, requires_grad=True)
         self.rot_vecs = torch.nn.Parameter(rot_vecs, requires_grad=True)
         self.scales = torch.nn.Parameter(
-            torch.Tensor([radius for box in bboxes]), requires_grad=True
+            torch.Tensor([1 for box in bboxes]), requires_grad=True
         )
 
     def get_params(self, optim_scale=False):

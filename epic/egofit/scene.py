@@ -1,6 +1,11 @@
+import numpy as np
+import torch
+
 from epic.egofit.egohuman import EgoHuman
 from epic.egofit.manobj import ManipulatedObject
-import numpy as np
+from epic.rendering.py3drendutils import batch_render
+
+from libyana.renderutils import catmesh
 
 
 class Scene:
@@ -30,12 +35,27 @@ class Scene:
         )
         self.objects = [
             ManipulatedObject(
-                obj_path, bboxes=bboxes, camintr=camera.get_camintr()
+                obj_path,
+                bboxes=bboxes,
+                camintr=camera.camintr,
+                camextr=camera.camextr,
             )
             for obj_path in all_obj_paths[0]
         ]
         self.camera = camera
         self.debug = debug
+
+    def cuda(self):
+        self.egohuman.cuda()
+        for obj in self.objects:
+            obj.cuda()
+        self.camera.cuda()
+
+    def cpu(self):
+        self.egohuman.cpu()
+        for obj in self.objects:
+            obj.cpu()
+        self.camera.cpu()
 
     def get_optim_params(self):
         # Collect EgoHuman parameters
@@ -48,15 +68,54 @@ class Scene:
                 params.append(obj_param)
         return params
 
-    def forward(self):
+    def forward(self, faces_per_pixel=10, viz_views=True):
         body_info = self.egohuman.forward()
         obj_infos = [obj.forward() for obj in self.objects]
+        verts = [body_info["verts"]] + [
+            obj_info["verts"] for obj_info in obj_infos
+        ]
+        faces = [body_info["faces"]] + [
+            obj_info["faces"] for obj_info in obj_infos
+        ]
+
+        all_verts, all_faces, _ = catmesh.batch_cat_meshes(verts, faces)
+        camintr = self.camera.camintr.to(all_verts.device).unsqueeze(0)
+        rot = self.camera.rot.to(all_verts.device).unsqueeze(0)
+        trans = self.camera.trans.to(all_verts.device).unsqueeze(0)
+        height, width = self.camera.image_size
 
         # Render scene
-        import pdb
-
-        pdb.set_trace()
-        return {"body_info": body_info, "obj_infos": obj_infos}
+        rendres = batch_render(
+            all_verts,
+            all_faces,
+            K=camintr,
+            rot=rot,
+            trans=trans,
+            image_sizes=[(width, height)],
+            mode="rgb",
+            faces_per_pixel=faces_per_pixel,
+        )
+        scene_res = {
+            "body_info": body_info,
+            "obj_infos": obj_infos,
+            "scene_rend": rendres,
+        }
+        if viz_views:
+            with torch.no_grad():
+                viz_verts = all_verts.clone()
+                viz_verts[:, :, 2] = -viz_verts[:, :, 2]
+                viz_rendres = batch_render(
+                    all_verts.new([0, 0, 0.7]) + viz_verts,
+                    all_faces,
+                    K=camintr,
+                    rot=rot,
+                    trans=trans,
+                    image_sizes=[(width, height)],
+                    mode="rgb",
+                    faces_per_pixel=faces_per_pixel,
+                )
+            scene_res["scene_viz_rend"] = [viz_rendres]
+        return scene_res
 
     def __len__(self):
         return len(self.data_df)

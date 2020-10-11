@@ -22,6 +22,7 @@ def batch_render(
     faces_per_pixel=10,
     K=None,
     rot=None,
+    trans=None,
     colors=None,
     color=(0.53, 0.53, 0.8),  # light_purple
     # color = (0.74117647, 0.85882353, 0.65098039),  # light_blue
@@ -49,12 +50,15 @@ def batch_render(
     principal_point = torch.stack([width - px, height - py], 1)
     if rot is None:
         rot = torch.eye(3).unsqueeze(0)
+    if trans is None:
+        trans = torch.zeros(3).unsqueeze(0)
     cameras = PerspectiveCameras(
         device=device,
         focal_length=focals,
         principal_point=principal_point,
         image_size=[(out_size, out_size) for _ in range(len(verts))],
         R=rot,
+        T=trans,
     )
     if mode == "rgb" and shading == "soft":
         lights = PointLights(device=device, location=[[0.0, 0.0, -3.0]])

@@ -5,7 +5,7 @@ import numpy as np
 import pickle
 from epic.egofit.scene import Scene
 from epic.egofit import fitting
-from epic.smplifyx import camera
+from epic.egofit import camera
 from epic.egofit.preprocess import Preprocessor
 
 from libyana.exputils import argutils
@@ -57,17 +57,15 @@ camrot = torch.eye(3)
 camrot[0, 0] = -1
 camrot[1, 1] = -1
 
-camintr = np.array(
-    [[args.focal, 0, 456 // 2], [0, args.focal, 256 // 2], [0, 0, 1]]
+camintr = torch.Tensor(
+    np.array([[args.focal, 0, 456 // 2], [0, args.focal, 256 // 2], [0, 0, 1]])
 )
-fx, fy = camintr[0, 0], camintr[1, 1]
-center = camintr[:2, 2]
 
-cam = camera.create_camera(
-    focal_length_x=fx,
-    focal_length_y=fy,
-    center=torch.Tensor(center).unsqueeze(0),
-    rotation=camrot.unsqueeze(0),
+img_size = supervision["imgs"][0].shape[:2]  # height, width
+cam = camera.PerspectiveCamera(
+    camintr=camintr,
+    rot=camrot,
+    image_size=img_size,
 )
 scene = Scene(data_df, cam)
 
@@ -75,6 +73,7 @@ scene = Scene(data_df, cam)
 # Simulate multiple objects
 for lr in args.lrs:
     res = fitting.fit_human(
+        data,
         supervision,
         scene,
         iters=args.iters,

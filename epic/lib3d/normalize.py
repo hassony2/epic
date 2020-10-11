@@ -21,5 +21,5 @@ def normalize_verts(verts, radius: float = 1):
     )
 
     # Scale
-    verts = radius * verts / verts.norm(2, -1).max()
+    verts = verts / verts.norm(2, -1).max()
     return verts

@@ -1,6 +1,14 @@
 import torch
 
 
+def project(pts, camintr, camextr=None):
+    if camextr is not None:
+        pts = transform_pts(camextr, pts)
+    hom2d = pts.bmm(camintr.permute(0, 2, 1))
+    proj = hom2d[:, :, :2] / hom2d[:, :, 2:]
+    return proj
+
+
 def transform_pts(T, pts):
     bsz = T.shape[0]
     n_pts = pts.shape[1]
@@ -41,7 +49,7 @@ def trans_init_from_boxes(boxes, K, z_range=(0.5, 0.5)):
 
 
 def trans_init_from_boxes_autodepth(
-    boxes_2d, K, model_points_3d, z_guess=0.5, mode="norm"
+    boxes_2d, K, model_points_3d, z_guess=0.5, mode="norm", camextr=None
 ):
     assert boxes_2d.shape[-1] == 4
     assert boxes_2d.dim() == 2
@@ -81,7 +89,14 @@ def trans_init_from_boxes_autodepth(
         delta_norms = C_pts_3d[:, :, :2].norm(2, -1).max(dim=1)[0]
         bb_norm = (boxes_2d[:, 2:] - bb_xy_centers).norm(2, -1)
         z = (fxfy[:, 0] * delta_norms / bb_norm).unsqueeze(1)
-        print(z.shape)
 
     xy_init = ((bb_xy_centers - cxcy) * z) / fxfy
-    return torch.cat([xy_init, z], 1)
+    trans = torch.cat([xy_init, z], 1)
+    if camextr is not None:
+        # Bring back to world coordinates
+        inv_camextr = torch.inverse(camextr)
+        trans = (
+            inv_camextr[:, :3, :3].bmm(trans.unsqueeze(-1))[:, :3, 0]
+            + inv_camextr[:, :3, 3]
+        )
+    return trans

@@ -97,7 +97,18 @@ class EgoHuman(torch.nn.Module):
             return_verts=True,
             return_full_pose=True,
         )
-        return body_model_output
+
+        res = {
+            "faces": self.armfaces.unsqueeze(0)
+            .repeat(self.batch_size, 1, 1)
+            .to(self.pose_embedding.device),
+            "verts": body_model_output.vertices,
+            "pose_embedding": self.pose_embedding,
+            "body_pose": body_pose,
+            "joints": body_model_output.joints,
+            "betas": body_model_output.betas,
+        }
+        return res
 
     def get_params(
         self,
