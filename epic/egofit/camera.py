@@ -1,4 +1,5 @@
 import torch
+from epic.lib3d import ops3d
 
 
 class PerspectiveCamera(torch.nn.Module):
@@ -13,20 +14,20 @@ class PerspectiveCamera(torch.nn.Module):
         if trans is None:
             trans = torch.zeros(3)
         self.register_buffer("trans", trans)
-        self.camextr = torch.eye(4).to(rot.device)
-        self.camextr[:3, :3] = rot
+        camextr = torch.eye(4).to(rot.device)
+        camextr[:3, :3] = rot
 
-        self.camextr[:3, 3] = trans
+        camextr[:3, 3] = trans
+        self.register_buffer("camextr", camextr)
+
         self.image_size = image_size
 
     def project(self, points):
         batch_size = points.shape[0]
         camextr = self.camextr.unsqueeze(0).repeat(batch_size, 1, 1)
         camintr = self.camintr.unsqueeze(0).repeat(batch_size, 1, 1)
-        import pdb
-
-        pdb.set_trace()
-        return camintr, camextr
+        points2d = ops3d.project(points, camintr, camextr)
+        return points2d
 
     def tocam3d(self, points):
         import pdb

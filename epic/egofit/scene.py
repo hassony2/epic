@@ -77,6 +77,8 @@ class Scene:
         faces = [body_info["faces"]] + [
             obj_info["faces"] for obj_info in obj_infos
         ]
+        verts2d = self.camera.project(body_info["verts"])
+        body_info["verts2d"] = verts2d
 
         all_verts, all_faces, _ = catmesh.batch_cat_meshes(verts, faces)
         camintr = self.camera.camintr.to(all_verts.device).unsqueeze(0)

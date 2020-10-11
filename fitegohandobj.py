@@ -1,4 +1,6 @@
 import argparse
+import itertools
+from pathlib import Path
 
 import torch
 import numpy as np
@@ -7,6 +9,7 @@ from epic.egofit.scene import Scene
 from epic.egofit import fitting
 from epic.egofit import camera
 from epic.egofit.preprocess import Preprocessor
+from epic.egofit.egolosses import EgoLosses
 
 from libyana.exputils import argutils
 from libyana.randomutils import setseeds
@@ -14,6 +17,19 @@ from libyana.randomutils import setseeds
 parser = argparse.ArgumentParser()
 parser.add_argument("--pickle_path", default="tmp.pkl")
 parser.add_argument("--radius", default=0.1, type=float)
+parser.add_argument("--optimizer", default="adam")
+parser.add_argument("--lambda_hand_vs", default=[1], type=float, nargs="+")
+parser.add_argument("--lambda_obj_masks", default=[1], type=float, nargs="+")
+parser.add_argument(
+    "--loss_hand_vs", default=["l1"], type=str, nargs="+", choices=["l1", "l2"]
+)
+parser.add_argument(
+    "--loss_obj_masks",
+    default=["l1"],
+    type=str,
+    nargs="+",
+    choices=["l1", "l2"],
+)
 parser.add_argument("--focal", default=200, type=float)
 parser.add_argument("--z_offs", default=[0.3], type=float, nargs="+")
 parser.add_argument("--viz_step", default=10, type=int)
@@ -62,23 +78,45 @@ camintr = torch.Tensor(
 )
 
 img_size = supervision["imgs"][0].shape[:2]  # height, width
-cam = camera.PerspectiveCamera(
-    camintr=camintr,
-    rot=camrot,
-    image_size=img_size,
-)
-scene = Scene(data_df, cam)
-
 
 # Simulate multiple objects
-for lr in args.lrs:
+for lr, lohv, lhv, loom, lom in itertools.product(
+    args.lrs,
+    args.loss_hand_vs,
+    args.lambda_hand_vs,
+    args.loss_obj_masks,
+    args.lambda_obj_masks,
+):
+    save_folder = Path(args.save_root) / (
+        f"opt{args.optimizer}_lr{lr:.4f}_it{args.iters:04d}"
+        f"lhv{lohv}{lhv:.2e}_lom{loom}{lom:.2e}"
+    )
+    save_folder.mkdir(exist_ok=True, parents=True)
+    argutils.save_args(args, save_folder)
+    cam = camera.PerspectiveCamera(
+        camintr=camintr,
+        rot=camrot,
+        image_size=img_size,
+    )
+    scene = Scene(data_df, cam)
+    egolosses = EgoLosses(
+        lambda_hand_v=lhv,
+        loss_hand_v=lohv,
+        lambda_obj_mask=lom,
+        loss_obj_mask=loom,
+    )
+
     res = fitting.fit_human(
         data,
         supervision,
         scene,
+        egolosses,
         iters=args.iters,
         lr=lr,
-        optimizer="adam",
-        save_root="tmp",
+        optimizer=args.optimizer,
+        save_folder=save_folder,
         viz_step=args.viz_step,
     )
+    res["opts"] = vars(args)
+    with (save_folder / "res.pkl").open("wb") as p_f:
+        pickle.dump(res, p_f)
