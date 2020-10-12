@@ -1,5 +1,4 @@
 import argparse
-import itertools
 from pathlib import Path
 
 import torch
@@ -10,14 +9,15 @@ from epic.egofit import fitting
 from epic.egofit import camera
 from epic.egofit.preprocess import Preprocessor
 from epic.egofit.egolosses import EgoLosses
+from epic.egofit import exputils
 
 from libyana.exputils import argutils
 from libyana.randomutils import setseeds
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--pickle_path", default="tmp.pkl")
-parser.add_argument("--radius", default=0.1, type=float)
-parser.add_argument("--optimizer", default="adam")
+parser.add_argument("--radiuss", default=[0.1], type=float, nargs="+")
+parser.add_argument("--optimizers", default=["adam"], nargs="+")
 parser.add_argument("--lambda_hand_vs", default=[1], type=float, nargs="+")
 parser.add_argument("--lambda_obj_masks", default=[1], type=float, nargs="+")
 parser.add_argument(
@@ -31,7 +31,6 @@ parser.add_argument(
     choices=["l1", "l2"],
 )
 parser.add_argument("--focals", default=[200], type=float, nargs="+")
-parser.add_argument("--z_offs", default=[0.3], type=float, nargs="+")
 parser.add_argument("--viz_step", default=10, type=int)
 parser.add_argument("--iters", default=100, type=int)
 parser.add_argument("--lrs", default=[0.01], type=float, nargs="+")
@@ -75,25 +74,23 @@ camrot[1, 1] = -1
 
 
 img_size = supervision["imgs"][0].shape[:2]  # height, width
-
+save_root = Path(args.save_root)
+save_root.mkdir(exist_ok=True, parents=True)
+argutils.save_args(args, save_root)
 # Simulate multiple objects
-for lr, lohv, lhv, loom, lom, focal in itertools.product(
-    args.lrs,
-    args.loss_hand_vs,
-    args.lambda_hand_vs,
-    args.loss_obj_masks,
-    args.lambda_obj_masks,
-    args.focals,
-):
-    save_folder = Path(args.save_root) / (
-        f"opt{args.optimizer}_lr{lr:.4f}_it{args.iters:04d}"
-        f"lhv{lohv}{lhv:.2e}_lom{loom}{lom:.2e}"
-        f"focal{focal}"
-    )
+args_list, args_str = exputils.process_args(args)
+print(f"Running {len(args_list)} experiments !")
+for arg_dict, arg_str in zip(args_list, args_str):
+    save_folder = save_root / arg_str
     save_folder.mkdir(exist_ok=True, parents=True)
-    argutils.save_args(args, save_folder)
     camintr = torch.Tensor(
-        np.array([[focal, 0, 456 // 2], [0, focal, 256 // 2], [0, 0, 1]])
+        np.array(
+            [
+                [arg_dict["focal"], 0, 456 // 2],
+                [0, arg_dict["focal"], 256 // 2],
+                [0, 0, 1],
+            ]
+        )
     )
     cam = camera.PerspectiveCamera(
         camintr=camintr,
@@ -102,10 +99,10 @@ for lr, lohv, lhv, loom, lom, focal in itertools.product(
     )
     scene = Scene(data_df, cam)
     egolosses = EgoLosses(
-        lambda_hand_v=lhv,
-        loss_hand_v=lohv,
-        lambda_obj_mask=lom,
-        loss_obj_mask=loom,
+        lambda_hand_v=arg_dict["lambda_hand_v"],
+        loss_hand_v=arg_dict["loss_hand_v"],
+        lambda_obj_mask=arg_dict["lambda_obj_mask"],
+        loss_obj_mask=arg_dict["loss_obj_mask"],
     )
 
     res = fitting.fit_human(
@@ -114,8 +111,8 @@ for lr, lohv, lhv, loom, lom, focal in itertools.product(
         scene,
         egolosses,
         iters=args.iters,
-        lr=lr,
-        optimizer=args.optimizer,
+        lr=arg_dict["lr"],
+        optimizer=arg_dict["optimizer"],
         save_folder=save_folder,
         viz_step=args.viz_step,
     )
