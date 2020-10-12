@@ -116,6 +116,7 @@ for arg_dict, arg_str in zip(args_list, args_str):
         save_folder=save_folder,
         viz_step=args.viz_step,
     )
-    res["opts"] = vars(args)
+    res["opts"] = arg_dict
+    res["args"] = vars(args)
     with (save_folder / "res.pkl").open("wb") as p_f:
         pickle.dump(res, p_f)

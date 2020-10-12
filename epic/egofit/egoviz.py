@@ -90,6 +90,7 @@ def ego_viz(
     save_path = os.path.join(save_folder, f"tmp_{step_idx:04d}.png")
     fig.savefig(save_path)
     print(f"Saved to {save_path}")
+    return save_path
 
 
 def ego_viz_old(

@@ -10,6 +10,11 @@ import torch.nn.functional as F
 pi = torch.tensor(3.14159265358979323846)
 
 
+def safe_sqrt(vals: torch.Tensor, eps: float = 0.000001) -> torch.Tensor:
+    vals = torch.max(torch.ones_like(vals) * eps, vals)
+    return torch.sqrt(vals)
+
+
 def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
     r"""Function that converts angles from radians to degrees.
 
@@ -161,7 +166,7 @@ def angle_axis_to_rotation_matrix(
         # We want to be careful to only evaluate the square root if the
         # norm of the angle_axis vector is greater than zero. Otherwise
         # we get a division by zero.
-        theta = torch.sqrt(theta2)
+        theta = safe_sqrt(theta2)
         k_one = torch.ones_like(theta)
 
         wxyz = angle_axis / (theta + eps)
@@ -307,11 +312,9 @@ def rotation_matrix_to_quaternion(
         return numerator / torch.clamp(denominator, min=eps)
 
     def quat(qx, qy, qz, qw, t):
-        return (
-            0.5 * torch.cat([qx, qy, qz, qw], dim=-1) / (torch.sqrt(t) + eps)
-        )
+        return 0.5 * torch.cat([qx, qy, qz, qw], dim=-1) / (safe_sqrt(t) + eps)
 
-    # qw = torch.sqrt(1+m00+m11+m22)/2
+    # qw = safe_sqrt(1+m00+m11+m22)/2
     # qx = (m21-m12)/(4*qw+eps)
     # qy = (m02-m20)/(4*qw+eps)
     # qz = (m10-m01)/(4*qw+eps)
@@ -354,8 +357,8 @@ def rotation_matrix_to_quaternion(
 
     quaternion: torch.Tensor = torch.where((m22 < eps), where_1, where_2)"""
 
-    def trace_positive_cond():
-        sq = torch.sqrt(trace + 1.0) * 2.0  # sq = 4 * qw.
+    def trace_positive_cond(eps=1e-6):
+        sq = safe_sqrt(trace + 1.0) * 2.0  # sq = 4 * qw.
         qw = 0.25 * sq
         qx = safe_zero_division(m21 - m12, sq)
         qy = safe_zero_division(m02 - m20, sq)
@@ -363,7 +366,7 @@ def rotation_matrix_to_quaternion(
         return torch.cat([qx, qy, qz, qw], dim=-1)
 
     def cond_1():
-        sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.0  # sq = 4 * qx.
+        sq = safe_sqrt(1.0 + m00 - m11 - m22 + eps) * 2.0  # sq = 4 * qx.
         qw = safe_zero_division(m21 - m12, sq)
         qx = 0.25 * sq
         qy = safe_zero_division(m01 + m10, sq)
@@ -371,7 +374,7 @@ def rotation_matrix_to_quaternion(
         return torch.cat([qx, qy, qz, qw], dim=-1)
 
     def cond_2():
-        sq = torch.sqrt(1.0 + m11 - m00 - m22 + eps) * 2.0  # sq = 4 * qy.
+        sq = safe_sqrt(1.0 + m11 - m00 - m22 + eps) * 2.0  # sq = 4 * qy.
         qw = safe_zero_division(m02 - m20, sq)
         qx = safe_zero_division(m01 + m10, sq)
         qy = 0.25 * sq
@@ -379,7 +382,7 @@ def rotation_matrix_to_quaternion(
         return torch.cat([qx, qy, qz, qw], dim=-1)
 
     def cond_3():
-        sq = torch.sqrt(1.0 + m22 - m00 - m11 + eps) * 2.0  # sq = 4 * qz.
+        sq = safe_sqrt(1.0 + m22 - m00 - m11 + eps) * 2.0  # sq = 4 * qz.
         qw = safe_zero_division(m10 - m01, sq)
         qx = safe_zero_division(m02 + m20, sq)
         qy = safe_zero_division(m12 + m21, sq)
@@ -556,7 +559,7 @@ def quaternion_to_angle_axis(
     #    return torch.cat([ax, ay, az], dim=-1)
 
     # def cond_1():
-    #    sin_theta = torch.sqrt(sin_squared)
+    #    sin_theta = safe_sqrt(sin_squared)
     #    k = 2.0 * torch.atan2(sin_theta, qw) / (sin_theta + eps)
     #    return aaxis(qx * k, qy * k, qz * k)
 
@@ -712,7 +715,7 @@ def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
         return torch.cat([qx, qy, qz, w], dim=-1)
 
     def cond_1():
-        theta = torch.sqrt(theta_squared)
+        theta = safe_sqrt(theta_squared)
         half_theta = theta * 0.5
         k = torch.sin(half_theta) / theta
         return quat(a0 * k, a1 * k, a2 * k, torch.cos(half_theta))

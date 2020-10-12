@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from pathlib import Path
 from tqdm import tqdm
 from epic.smplifyx import optim_factory
@@ -25,16 +25,18 @@ def fit_human(
     )
 
     losses = defaultdict(list)
+    img_paths = OrderedDict()
     for iter_idx in tqdm(range(iters)):
         scene_outputs = scene.forward()
         if iter_idx % viz_step == 0:
-            egoviz.ego_viz(
+            img_path = egoviz.ego_viz(
                 data,
                 supervision,
                 scene_outputs,
                 save_folder=save_folder / "viz",
                 step_idx=iter_idx,
             )
+            img_paths[iter_idx] = img_path
         loss, step_losses = egolosses.compute_losses(
             scene_outputs, supervision
         )
@@ -49,5 +51,5 @@ def fit_human(
 
         for key, val in metrics.items():
             losses[key].append(val)
-    res = {"losses": dict(losses)}
+    res = {"losses": dict(losses), "imgs": img_paths}
     return res
