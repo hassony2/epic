@@ -9,9 +9,11 @@ class EgoLosses:
         loss_hand_v="l1",
         lambda_obj_mask=1,
         loss_obj_mask="l1",
+        norm_hand_v=100,
     ):
         self.lambda_hand_v = lambda_hand_v
         self.loss_hand_v = loss_hand_v
+        self.norm_hand_v = norm_hand_v
 
         self.lambda_obj_mask = lambda_obj_mask
         self.loss_obj_mask = loss_obj_mask
@@ -33,12 +35,18 @@ class EgoLosses:
     def compute_metrics(self, scene_outputs, supervision):
         pred_verts = scene_outputs["body_info"]["verts2d"]
         gt_verts = supervision["verts"].to(pred_verts.device)[:, :, :2]
-        dists = (pred_verts - gt_verts).norm(2, -1).mean()
+        weights_verts = supervision["verts_confs"].to(pred_verts.device)
+        # Compute per-vertex pixel distances
+        diffs = (pred_verts - gt_verts).norm(2, -1)
+        dists = (diffs * weights_verts).sum() / weights_verts.sum()
         return {"hand_v_dists": dists.item()}
 
     def compute_hand_v_loss(self, scene_outputs, supervision):
-        pred_verts = scene_outputs["body_info"]["verts2d"]
-        gt_verts = supervision["verts"].to(pred_verts.device)[:, :, :2]
+        pred_verts = scene_outputs["body_info"]["verts2d"] / self.norm_hand_v
+        gt_verts = (
+            supervision["verts"].to(pred_verts.device)[:, :, :2]
+            / self.norm_hand_v
+        )
         if self.loss_hand_v == "l1":
             errs = torch_f.l1_loss(
                 gt_verts, pred_verts, reduction="none"

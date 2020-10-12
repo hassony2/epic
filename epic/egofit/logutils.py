@@ -2,9 +2,28 @@ import os
 from pathlib import Path
 import shutil
 from functools import partial
+import pandas as pd
 
 
-def path2img(path, local_folder="", call_nb=[0]):
+def drop_redundant_columns(df):
+    nunique = df.apply(pd.Series.nunique)
+    cols_to_drop = nunique[nunique == 1].index
+    print(f"Dropping {list(cols_to_drop)}")
+    df = df.drop(cols_to_drop, axis=1)
+    return df
+
+
+def make_collapsible(html_str, collapsible_idx=0):
+    pref = (
+        f'<button data-toggle="collapse" data-target="#demo{collapsible_idx}">'
+        "Toggle show image</button>"
+        f'<div id="demo{collapsible_idx}" class="collapse">'
+    )
+    suf = "</div>"
+    return pref + html_str + suf
+
+
+def path2img(path, local_folder="", collabsible=True, call_nb=[0]):
     if local_folder:
         local_folder = Path(local_folder) / "imgs"
         local_folder.mkdir(exist_ok=True, parents=True)
@@ -21,10 +40,13 @@ def path2img(path, local_folder="", call_nb=[0]):
     # Keep track of count number
     call_nb[0] += 1
     print(rel_path)
-    return '<img src="' + str(rel_path) + '"/>'
+    img_str = '<img src="' + str(rel_path) + '"/>'
+    if collabsible:
+        img_str = make_collapsible(img_str, call_nb[0])
+    return img_str
 
 
-def df2html(df, local_folder=""):
+def df2html(df, local_folder="", drop_redundant=True):
     """
     Convert df to html table, getting images for fields which contain 'img_path'
     in their name.
@@ -34,6 +56,9 @@ def df2html(df, local_folder=""):
     for key in keys:
         if "img_path" in key:
             format_dicts[key] = partial(path2img, local_folder=local_folder)
+
+    if drop_redundant:
+        df = drop_redundant_columns(df)
 
     df_html = df.to_html(escape=False, formatters=format_dicts)
     return df_html
