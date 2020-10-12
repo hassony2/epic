@@ -30,7 +30,7 @@ parser.add_argument(
     nargs="+",
     choices=["l1", "l2"],
 )
-parser.add_argument("--focal", default=200, type=float)
+parser.add_argument("--focals", default=[200], type=float, nargs="+")
 parser.add_argument("--z_offs", default=[0.3], type=float, nargs="+")
 parser.add_argument("--viz_step", default=10, type=int)
 parser.add_argument("--iters", default=100, type=int)
@@ -73,26 +73,28 @@ camrot = torch.eye(3)
 camrot[0, 0] = -1
 camrot[1, 1] = -1
 
-camintr = torch.Tensor(
-    np.array([[args.focal, 0, 456 // 2], [0, args.focal, 256 // 2], [0, 0, 1]])
-)
 
 img_size = supervision["imgs"][0].shape[:2]  # height, width
 
 # Simulate multiple objects
-for lr, lohv, lhv, loom, lom in itertools.product(
+for lr, lohv, lhv, loom, lom, focal in itertools.product(
     args.lrs,
     args.loss_hand_vs,
     args.lambda_hand_vs,
     args.loss_obj_masks,
     args.lambda_obj_masks,
+    args.focals,
 ):
     save_folder = Path(args.save_root) / (
         f"opt{args.optimizer}_lr{lr:.4f}_it{args.iters:04d}"
         f"lhv{lohv}{lhv:.2e}_lom{loom}{lom:.2e}"
+        f"focal{focal}"
     )
     save_folder.mkdir(exist_ok=True, parents=True)
     argutils.save_args(args, save_folder)
+    camintr = torch.Tensor(
+        np.array([[focal, 0, 456 // 2], [0, focal, 256 // 2], [0, 0, 1]])
+    )
     cam = camera.PerspectiveCamera(
         camintr=camintr,
         rot=camrot,

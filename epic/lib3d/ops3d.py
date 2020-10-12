@@ -1,11 +1,15 @@
 import torch
 
 
-def project(pts, camintr, camextr=None):
+def project(pts, camintr, camextr=None, min_z=None):
     if camextr is not None:
         pts = transform_pts(camextr, pts)
     hom2d = pts.bmm(camintr.permute(0, 2, 1))
-    proj = hom2d[:, :, :2] / hom2d[:, :, 2:]
+    zs = hom2d[:, :, 2:]
+    # clamp minimum z to avoid nans
+    if min_z is not None:
+        zs = torch.max(torch.ones_like(zs) * min_z, zs)
+    proj = hom2d[:, :, :2] / zs
     return proj
 
 
