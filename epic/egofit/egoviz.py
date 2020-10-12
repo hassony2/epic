@@ -45,7 +45,7 @@ def ego_viz(
     fig, axes = plt.subplots(
         sample_nb,
         col_nb,
-        figsize=(int(col_nb * fig_res), int(sample_nb * 3 / 2 * fig_res)),
+        figsize=(int(3 / 2 * col_nb * fig_res), int(sample_nb * fig_res)),
     )
     scene_size = len(supervision["imgs"])
     sample_idxs = np.linspace(0, scene_size - 1, sample_nb).astype(np.int)
