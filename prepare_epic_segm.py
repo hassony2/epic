@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from epic_kitchens.meta import training_labels
 from epic.viz import masksviz, handviz, hoaviz
-from epic.hoa import gethoa, handposes
+from epic.hoa import gethoa, handposes, links
 from epic.io.tarutils import TarReader
 
 matplotlib.use("agg")
@@ -120,6 +120,7 @@ for frame_idx in tqdm(
     label = f"fr{frame_idx}"
     ax.imshow(img)
     hoa_df = hoa_dets[hoa_dets.frame == frame_idx]
+    hoa_links = links.links_from_df(hoa_df, resize_factor=resize_factor)
     with torch.no_grad():
         # Extract object masks
         res = mask_extractor.masks_from_df(
@@ -146,24 +147,20 @@ for frame_idx in tqdm(
             masksviz.add_masks_viz(
                 ax, res["masks"], res["boxes"], labels=labels, debug=args.debug
             )
-            mask = res["masks"][0]
-            boxes = res["boxes"][0]
-        else:
-            mask = None
-            boxes = None
         if args.debug:
             fig.savefig(f"tmp_{frame_idx:05d}.png")
         if args.pickle_path is not None:
             dump_list.append(
                 {
-                    "mask": mask,
-                    "boxes": boxes,
+                    "masks": res["masks"],
+                    "boxes": res["boxes"],
                     "obj_path": args.obj_path,
                     "hands": pred_hands,
                     "img_path": img_path,
                     "resize_factor": resize_factor,
                     "video_id": args.video_id,
                     "frame_idx": frame_idx,
+                    "links": hoa_links,
                 }
             )
 if args.pickle_path is not None:

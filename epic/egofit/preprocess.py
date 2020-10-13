@@ -98,7 +98,7 @@ class Preprocessor:
             else:
                 ref_hand_rends.append(np.zeros(img.shape) + 1)
 
-            sample_masks.append(fit_info["mask"])
+            sample_masks.append(torch.stack(fit_info["masks"]))
             sample_verts.append(human_verts)
             sample_confs.append(verts_confs)
             sample_imgs.append(img)
@@ -109,5 +109,6 @@ class Preprocessor:
             "verts_confs": torch.Tensor(np.stack(sample_confs)),
             "imgs": sample_imgs,
             "ref_hand_rends": ref_hand_rends,
+            "links": [info["links"] for info in fit_infos],
         }
         return fit_data

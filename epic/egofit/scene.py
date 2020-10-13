@@ -20,15 +20,18 @@ class Scene:
         batch_size = len(data_df)
         self.batch_size = batch_size
         self.data_df = data_df
-        all_obj_paths = data_df.obj_paths.to_list()
-        matches_first_obj_path = [
-            obj_path == all_obj_paths[0] for obj_path in all_obj_paths
-        ]
-        if not np.all(matches_first_obj_path):
-            raise ValueError(
-                f"Expected all object paths to be equal, but got {all_obj_paths}"
-            )
-        bboxes = np.stack(data_df.boxes.to_list())
+        all_obj_paths = np.array(data_df.obj_paths.tolist()).transpose()
+        for obj_paths in all_obj_paths:
+            matches_first_obj_path = [
+                obj_path == obj_paths[0] for obj_path in obj_paths
+            ]
+            if not np.all(matches_first_obj_path):
+                raise ValueError(
+                    f"Expected all object paths to be equal, but got {all_obj_paths}"
+                )
+        obj_bboxes = np.stack(data_df.boxes.to_list()).transpose(
+            1, 0, 2
+        )  # (objects, time, 4)
         self.egohuman = EgoHuman(
             batch_size=batch_size,
             hand_pca_nb=hand_pca_nb,
@@ -36,12 +39,12 @@ class Scene:
         )
         self.objects = [
             ManipulatedObject(
-                obj_path,
+                obj_paths[0],
                 bboxes=bboxes,
                 camintr=camera.camintr,
                 camextr=camera.camextr,
             )
-            for obj_path in all_obj_paths[0]
+            for obj_paths, bboxes in zip(all_obj_paths, obj_bboxes)
         ]
         self.camera = camera
         self.debug = debug

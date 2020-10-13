@@ -1,3 +1,5 @@
+import os
+
 from pytorch3d.io import load_obj as py3dload_obj
 import torch
 
@@ -19,9 +21,11 @@ class ManipulatedObject(torch.nn.Module):
         z_off=0.5,
     ):
         super().__init__()
+        if not os.path.exists(obj_path):
+            raise ValueError(f"Object path {obj_path} does not exist !")
         verts_loc, faces_idx, _ = py3dload_obj(obj_path)
 
-        assert bboxes.ndim == 2 and bboxes.shape[1] == 4, (
+        assert bboxes.ndim == 2 and bboxes.shape[-1] == 4, (
             f"Expected bboxes of shape {bboxes.shape}"
             "to have shape (batch_size, 4)"
         )
