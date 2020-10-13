@@ -1,3 +1,5 @@
+import pickle
+
 import torch
 from human_body_prior.tools.model_loader import load_vposer
 from epic.smplifyx import (
@@ -18,6 +20,7 @@ class EgoHuman(torch.nn.Module):
         vposer_dir="assets/vposer",
         vposer_dim=32,
         parts_path="assets/models/smplx/smplx_parts_segm.pkl",
+        mano_corresp_path="assets/models/MANO_SMPLX_vertex_ids.pkl",
     ):
         super().__init__()
         self.debug = debug
@@ -39,6 +42,8 @@ class EgoHuman(torch.nn.Module):
         self.set_head2cam_trans()
 
         self.armfaces = smplvis.filter_parts(self.smpl_f, parts_path)
+        with open(mano_corresp_path, "rb") as p_f:
+            self.mano_corresp = pickle.load(p_f)
 
         # Initialize model parameters
         self.batch_size = batch_size
@@ -58,6 +63,12 @@ class EgoHuman(torch.nn.Module):
         self.right_hand_pose = torch.nn.Parameter(
             right_hand_pose, requires_grad=True
         )
+
+    def get_handverts(self):
+        res = self.forward()
+        verts_right = res["verts"][:, self.mano_corresp["right_hand"]]
+        verts_left = res["verts"][:, self.mano_corresp["left_hand"]]
+        return {"left": verts_left, "right": verts_right}
 
     def set_head2cam_trans(self):
         pose_embedding = self.get_neutral_pose_embedding().unsqueeze(0)

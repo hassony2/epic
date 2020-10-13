@@ -16,7 +16,6 @@ from libyana.randomutils import setseeds
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--pickle_path", default="tmp.pkl")
-parser.add_argument("--radiuss", default=[0.1], type=float, nargs="+")
 parser.add_argument("--optimizers", default=["adam"], nargs="+")
 parser.add_argument("--lambda_hand_vs", default=[1], type=float, nargs="+")
 parser.add_argument("--lambda_obj_masks", default=[1], type=float, nargs="+")
@@ -30,9 +29,9 @@ parser.add_argument(
     nargs="+",
     choices=["l1", "l2"],
 )
-parser.add_argument("--focals", default=[200], type=float, nargs="+")
+parser.add_argument("--focals", default=[150], type=float, nargs="+")
 parser.add_argument("--viz_step", default=10, type=int)
-parser.add_argument("--iters", default=100, type=int)
+parser.add_argument("--iters", default=400, type=int)
 parser.add_argument("--lrs", default=[0.01], type=float, nargs="+")
 parser.add_argument(
     "--loss_types",
@@ -45,6 +44,7 @@ parser.add_argument("--save_root", default="tmp")
 parser.add_argument("--rot_nb", default=1, type=int)
 parser.add_argument("--no_crop", action="store_true")
 parser.add_argument("--debug", action="store_true")
+parser.add_argument("--no_obj", action="store_true")
 parser.add_argument(
     "--frame_nb", default=2, type=int, help="Number of frames to optimize"
 )
@@ -98,6 +98,8 @@ for arg_dict, arg_str in zip(args_list, args_str):
         image_size=img_size,
     )
     scene = Scene(data_df, cam)
+    # Initialize object by hand pose
+    scene.reset_obj2hand()
     egolosses = EgoLosses(
         lambda_hand_v=arg_dict["lambda_hand_v"],
         loss_hand_v=arg_dict["loss_hand_v"],
@@ -116,6 +118,19 @@ for arg_dict, arg_str in zip(args_list, args_str):
         save_folder=save_folder,
         viz_step=args.viz_step,
     )
+    scene.reset_obj2hand()
+    if not args.no_obj:
+        res = fitting.fit_human(
+            data,
+            supervision,
+            scene,
+            egolosses,
+            iters=args.iters,
+            lr=arg_dict["lr"],
+            optimizer=arg_dict["optimizer"],
+            save_folder=save_folder,
+            viz_step=args.viz_step,
+        )
     res["opts"] = arg_dict
     res["args"] = vars(args)
     with (save_folder / "res.pkl").open("wb") as p_f:

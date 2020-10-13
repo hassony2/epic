@@ -16,6 +16,20 @@ from pytorch3d.ops import interpolate_face_attributes
 from pytorch3d.renderer.mesh import textures
 
 
+def get_colors(
+    verts,
+    color=(0.53, 0.53, 0.8),
+):
+    colors = (
+        torch.from_numpy(np.array(color))
+        .view(1, 1, 3)
+        .to(verts.device)
+        .float()
+        .repeat(verts.shape[0], verts.shape[1], 1)
+    )
+    return colors
+
+
 def batch_render(
     verts,
     faces,
@@ -33,6 +47,7 @@ def batch_render(
     mode="rgb",
 ):
     device = torch.device("cuda:0")
+    K = K.to(device)
     width, height = image_sizes[0]
     out_size = int(max(image_sizes[0]))
     raster_settings = RasterizationSettings(
@@ -49,9 +64,9 @@ def batch_render(
     py = K[:, 1, 2]
     principal_point = torch.stack([width - px, height - py], 1)
     if rot is None:
-        rot = torch.eye(3).unsqueeze(0)
+        rot = torch.eye(3).unsqueeze(0).to(device)
     if trans is None:
-        trans = torch.zeros(3).unsqueeze(0)
+        trans = torch.zeros(3).unsqueeze(0).to(device)
     cameras = PerspectiveCameras(
         device=device,
         focal_length=focals,
@@ -62,7 +77,9 @@ def batch_render(
     )
     if mode == "rgb" and shading == "soft":
         lights = PointLights(device=device, location=[[0.0, 0.0, -3.0]])
-        lights = DirectionalLights(device=device)
+        lights = DirectionalLights(
+            device=device, direction=((0.6, -0.6, -0.6),)
+        )
         shader = SoftPhongShader(device=device, cameras=cameras, lights=lights)
     elif mode == "silh":
         blend_params = BlendParams(sigma=1e-4, gamma=1e-4)
@@ -82,13 +99,7 @@ def batch_render(
     )
     if mode == "rgb":
         if colors is None:
-            colors = (
-                torch.from_numpy(np.array(color))
-                .view(1, 1, 3)
-                .float()
-                .cuda()
-                .repeat(verts.shape[0], verts.shape[1], 1)
-            )
+            colors = get_colors(verts, color)
         tex = textures.TexturesVertex(verts_features=colors)
 
         meshes = Meshes(verts=verts, faces=faces, textures=tex)

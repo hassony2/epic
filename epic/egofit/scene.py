@@ -3,7 +3,7 @@ import torch
 
 from epic.egofit.egohuman import EgoHuman
 from epic.egofit.manobj import ManipulatedObject
-from epic.rendering.py3drendutils import batch_render
+from epic.rendering.py3drendutils import batch_render, get_colors
 
 from libyana.renderutils import catmesh
 
@@ -18,6 +18,7 @@ class Scene:
         debug=True,
     ):
         batch_size = len(data_df)
+        self.batch_size = batch_size
         self.data_df = data_df
         all_obj_paths = data_df.obj_paths.to_list()
         matches_first_obj_path = [
@@ -68,19 +69,45 @@ class Scene:
                 params.append(obj_param)
         return params
 
+    def reset_obj2hand(self):
+        handverts = self.egohuman.get_handverts()
+        camintr = self.camera.camintr.unsqueeze(0).repeat(
+            self.batch_size, 1, 1
+        )
+        camextr = self.camera.camextr.unsqueeze(0).repeat(
+            self.batch_size, 1, 1
+        )
+        for obj in self.objects:
+            hand_links = obj.hand_links
+            z_offs = []
+            for sample_idx, sides in enumerate(hand_links):
+                verts = [handverts[side][sample_idx] for side in sides]
+                z_off = torch.cat(verts)[:, 2].median()
+                z_offs.append(z_off)
+            z_offs = torch.stack(z_offs)
+            obj.init_scale_trans_from_depth(z_offs, camintr, camextr)
+
     def forward(self, faces_per_pixel=10, viz_views=True):
         body_info = self.egohuman.forward()
         obj_infos = [obj.forward() for obj in self.objects]
-        verts = [body_info["verts"]] + [
-            obj_info["verts"] for obj_info in obj_infos
-        ]
+        body_verts = body_info["verts"]
+        obj_verts = [obj_info["verts"] for obj_info in obj_infos]
+        verts = [body_verts] + obj_verts
         faces = [body_info["faces"]] + [
             obj_info["faces"] for obj_info in obj_infos
         ]
         verts2d = self.camera.project(body_info["verts"])
         body_info["verts2d"] = verts2d
 
-        all_verts, all_faces, _ = catmesh.batch_cat_meshes(verts, faces)
+        body_color = ((0.25, 0.73, 1),)  # light_blue
+        # obj_color = (0.74117647, 0.85882353, 0.65098039),  # light_green
+        obj_color = ((0.25, 0.85, 0.85),)  # light_blue_green
+        colors = [get_colors(body_verts, body_color)] + [
+            get_colors(obj_vert, obj_color) for obj_vert in obj_verts
+        ]
+        all_verts, all_faces, all_colors = catmesh.batch_cat_meshes(
+            verts, faces, colors
+        )
         camintr = self.camera.camintr.to(all_verts.device).unsqueeze(0)
         rot = self.camera.rot.to(all_verts.device).unsqueeze(0)
         trans = self.camera.trans.to(all_verts.device).unsqueeze(0)
@@ -90,6 +117,7 @@ class Scene:
         rendres = batch_render(
             all_verts,
             all_faces,
+            colors=all_colors,
             K=camintr,
             rot=rot,
             trans=trans,
@@ -108,7 +136,8 @@ class Scene:
                 viz_verts[:, :, 2] = -viz_verts[:, :, 2]
                 viz_rendres = batch_render(
                     all_verts.new([0, 0, 0.7]) + viz_verts,
-                    all_faces,
+                    torch.flip(all_faces, (2,)),  # Compensate for - in verts
+                    colors=all_colors,
                     K=camintr,
                     rot=rot,
                     trans=trans,

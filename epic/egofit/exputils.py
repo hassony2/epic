@@ -6,7 +6,6 @@ KEY_MAPPING = {
     "loss_obj_mask": "lom",
     "lambda_obj_mask": "loml",
     "focal": "f",
-    "radius": "rad",
     "optimizer": "opt",
 }
 
@@ -45,7 +44,6 @@ def process_args(args):
         "loss_obj_mask",
         "focal",
         "optimizer",
-        "radius",
     ]
     multi_params = [args[f"{key}s"] for key in multi_keys]
     exp_params = itertools.product(*multi_params)

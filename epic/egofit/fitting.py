@@ -16,6 +16,7 @@ def fit_human(
     optimizer="adam",
     optim_shape=False,
     viz_step=10,
+    debug=False,
 ):
     scene.cuda()
     optim_params = scene.get_optim_params()
@@ -43,7 +44,11 @@ def fit_human(
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        print(step_losses)
+        if debug:
+            print_losses = ", ".join(
+                [f"{key}: {val:.2e}" for key, val in step_losses.items()]
+            )
+            print(f"Step losses: {print_losses}")
         metrics = egolosses.compute_metrics(scene_outputs, supervision)
         # Collect metrics
         for key, val in step_losses.items():

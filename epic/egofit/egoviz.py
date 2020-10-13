@@ -1,6 +1,6 @@
 import os
 from matplotlib import pyplot as plt
-from matplotlib import cm
+from matplotlib import cm, ticker
 import numpy as np
 import torch
 
@@ -30,6 +30,20 @@ def add_hands(ax, sample_data):
             )
 
 
+def make_alpha(img, bg_val=1):
+    img = npt.numpify(img)
+
+    # Extend single-channel image to 3 channels
+    if img.ndim == 2:
+        img = img[:, :, None]
+    if img.shape[2] == 1:
+        img = img.repeat(3, 2)
+    # Alpha as locations where image is != from background color
+    mask = (img[:, :, :3].sum(-1) != (bg_val * 3)).astype(img.dtype)
+    img = np.concatenate([img, mask[:, :, None]], 2)
+    return img
+
+
 def ego_viz(
     data,
     supervision,
@@ -41,6 +55,7 @@ def ego_viz(
 ):
     scene_rend = npt.numpify(scene_outputs["scene_rend"])
     viz_rends = [npt.numpify(rend) for rend in scene_outputs["scene_viz_rend"]]
+    ref_hand_rends = supervision["ref_hand_rends"]
     col_nb = 3 + len(viz_rends)
     fig, axes = plt.subplots(
         sample_nb,
@@ -61,18 +76,20 @@ def ego_viz(
         ax.axis("off")
         add_hands(ax, sample_data)
 
-        # Column 2: Rendered prediction
+        # Column 2: Rendered prediction on top of GT hands
         ax = vizmp.get_axis(
             axes, row_idx=row_idx, col_idx=1, row_nb=sample_nb, col_nb=col_nb
         )
-        ax.imshow(scene_rend[sample_idx])
+        ax.imshow(ref_hand_rends[sample_idx])
+        ax.imshow(make_alpha(scene_rend[sample_idx][:, :, :3]), alpha=0.8)
+        ax.axis("off")
 
         # Column 3: Rendered prediction
         ax = vizmp.get_axis(
             axes, row_idx=row_idx, col_idx=2, row_nb=sample_nb, col_nb=col_nb
         )
         ax.imshow(img)
-        ax.imshow(scene_rend[sample_idx])
+        ax.imshow(make_alpha(scene_rend[sample_idx][:, :, :3]), alpha=0.8)
         # Column 3: Rendered prediction
         ax.axis("off")
         for view_idx, viz_rend in enumerate(viz_rends):
@@ -83,12 +100,15 @@ def ego_viz(
                 row_nb=sample_nb,
                 col_nb=col_nb,
             )
-            ax.imshow(viz_rend[sample_idx])
+            ax.imshow(viz_rend[sample_idx, :, :, :3])
             ax.axis("off")
 
     os.makedirs(save_folder, exist_ok=True)
     save_path = os.path.join(save_folder, f"tmp_{step_idx:04d}.png")
-    fig.savefig(save_path)
+    fig.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0.1, wspace=0)
+    fig.gca().xaxis.set_major_locator(ticker.NullLocator())
+    fig.gca().yaxis.set_major_locator(ticker.NullLocator())
+    fig.savefig(save_path, bbox_inches="tight")
     print(f"Saved to {save_path}")
     return save_path
 

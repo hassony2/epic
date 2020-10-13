@@ -6,14 +6,22 @@ import pandas as pd
 
 
 def drop_redundant_columns(df):
-    nunique = df.apply(pd.Series.nunique)
-    cols_to_drop = nunique[nunique == 1].index
-    print(f"Dropping {list(cols_to_drop)}")
-    df = df.drop(cols_to_drop, axis=1)
+    """
+    If dataframe contains multiple lines, drop the ones for which the column
+    contains equal values
+    """
+    if len(df) > 1:
+        nunique = df.apply(pd.Series.nunique)
+        cols_to_drop = nunique[nunique == 1].index
+        print(f"Dropping {list(cols_to_drop)}")
+        df = df.drop(cols_to_drop, axis=1)
     return df
 
 
 def make_collapsible(html_str, collapsible_idx=0):
+    """
+    Create collapsible button to selectively hide large html items such as images
+    """
     pref = (
         f'<button data-toggle="collapse" data-target="#demo{collapsible_idx}">'
         "Toggle show image</button>"
