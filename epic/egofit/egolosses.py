@@ -1,5 +1,6 @@
-import torch
 from torch.nn import functional as torch_f
+
+from libyana.metrics import iou as lyiou
 
 
 class EgoLosses:
@@ -33,13 +34,22 @@ class EgoLosses:
         return loss, losses
 
     def compute_metrics(self, scene_outputs, supervision):
+        # Get hand vertex information
         pred_verts = scene_outputs["body_info"]["verts2d"]
         gt_verts = supervision["verts"].to(pred_verts.device)[:, :, :2]
         weights_verts = supervision["verts_confs"].to(pred_verts.device)
+
         # Compute per-vertex pixel distances
         diffs = (pred_verts - gt_verts).norm(2, -1)
         dists = (diffs * weights_verts).sum() / weights_verts.sum()
-        return {"hand_v_dists": dists.item()}
+
+        # Compute mask IoU
+        pred_masks = scene_outputs["segm_rend"]
+        pseudo_gt_masks = supervision["masks"].permute(0, 2, 3, 1)
+        mask_iou = lyiou.batch_mask_iou(
+            (pred_masks > 0), (pseudo_gt_masks > 0)
+        ).mean()
+        return {"hand_v_dists": dists.item(), "obj_mask_iou": mask_iou.item()}
 
     def compute_hand_v_loss(self, scene_outputs, supervision):
         pred_verts = scene_outputs["body_info"]["verts2d"] / self.norm_hand_v
@@ -60,4 +70,16 @@ class EgoLosses:
         return loss
 
     def compute_obj_mask_loss(self, scene_outputs, supervision):
-        return torch.Tensor([0]).mean()
+        pred_masks = scene_outputs["segm_rend"]
+        pseudo_gt_masks = (
+            supervision["masks"].permute(0, 2, 3, 1).to(pred_masks.device)
+        )
+        if self.loss_obj_mask == "l1":
+            loss = torch_f.l1_loss(
+                pseudo_gt_masks, pred_masks, reduction="none"
+            ).mean()
+        else:
+            loss = torch_f.mse_loss(
+                pseudo_gt_masks, pred_masks, reduction="none"
+            ).mean()
+        return loss

@@ -39,6 +39,7 @@ def batch_render(
     trans=None,
     colors=None,
     color=(0.53, 0.53, 0.8),  # light_purple
+    face_colors=None,
     # color = (0.74117647, 0.85882353, 0.65098039),  # light_blue
     image_sizes=None,
     out_res=512,
@@ -87,7 +88,7 @@ def batch_render(
     elif shading == "faceidx":
         shader = FaceIdxShader()
     elif shading == "facecolor":
-        shader = FaceColorShader(face_colors=faces)
+        shader = FaceColorShader(face_colors=face_colors)
     else:
         raise ValueError(f"{shading} not in [facecolor|faceidx|soft]")
 
