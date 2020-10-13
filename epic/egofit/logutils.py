@@ -4,6 +4,8 @@ import shutil
 from functools import partial
 import pandas as pd
 
+HTML_IDX = [0]
+
 
 def drop_redundant_columns(df):
     """
@@ -31,7 +33,32 @@ def make_collapsible(html_str, collapsible_idx=0):
     return pref + html_str + suf
 
 
-def path2img(path, local_folder="", collabsible=True, call_nb=[0]):
+def path2video(path, local_folder="", collabsible=True, call_nb=HTML_IDX):
+    if local_folder:
+        local_folder = Path(local_folder) / "video"
+        local_folder.mkdir(exist_ok=True, parents=True)
+
+        ext = path.split(".")[-1]
+        video_name = f"{call_nb[0]:04d}.{ext}"
+        dest_img_path = local_folder / video_name
+        shutil.copy(path, dest_img_path)
+        rel_path = os.path.join("video", video_name)
+    else:
+        rel_path = path
+
+    # Keep track of count number
+    call_nb[0] += 1
+    vid_str = (
+        '<video controls> <source src="'
+        + str(rel_path)
+        + '" type="video/webm"></video>'
+    )
+    if collabsible:
+        vid_str = make_collapsible(vid_str, call_nb[0])
+    return vid_str
+
+
+def path2img(path, local_folder="", collabsible=True, call_nb=HTML_IDX):
     if local_folder:
         local_folder = Path(local_folder) / "imgs"
         local_folder.mkdir(exist_ok=True, parents=True)
@@ -64,6 +91,8 @@ def df2html(df, local_folder="", drop_redundant=True):
     for key in keys:
         if "img_path" in key:
             format_dicts[key] = partial(path2img, local_folder=local_folder)
+        if "video_path" in key:
+            format_dicts[key] = partial(path2video, local_folder=local_folder)
 
     if drop_redundant:
         df = drop_redundant_columns(df)

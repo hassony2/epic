@@ -105,6 +105,7 @@ def ego_viz(
 
     os.makedirs(save_folder, exist_ok=True)
     save_path = os.path.join(save_folder, f"tmp_{step_idx:04d}.png")
+    fig.suptitle(f"optim iter : {step_idx}")
     fig.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0.1, wspace=0)
     fig.gca().xaxis.set_major_locator(ticker.NullLocator())
     fig.gca().yaxis.set_major_locator(ticker.NullLocator())

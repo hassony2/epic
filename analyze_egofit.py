@@ -9,11 +9,28 @@ import pandas as pd
 
 from epic.egofit import logutils
 from libyana.exputils import argutils
+from moviepy import editor
+
+
+def make_gif(img_paths, gif_path, fps=2):
+    img_paths = [str(path) for path in img_paths]
+    clip = editor.ImageSequenceClip(img_paths, fps=fps)
+    clip.write_gif(gif_path)
+
+
+def make_video(img_paths, video_path, fps=2):
+    img_paths = [str(path) for path in img_paths]
+    clip = editor.ImageSequenceClip(img_paths, fps=fps)
+    clip.write_videofile(str(video_path))
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--save_root", default="tmp")
 parser.add_argument("--sort_loss", default="hand_v_dists")
 parser.add_argument("--destination", default="results/tables")
+parser.add_argument("--gifs", action="store_true")
+parser.add_argument("--no_videos", action="store_true")
+
 args = parser.parse_args()
 argutils.print_args(args)
 
@@ -41,6 +58,15 @@ for folder in save_root.iterdir():
         img_paths = res["imgs"]
         img_path = img_paths[list(img_paths)[-1]]
         res_data["last_img_path"] = img_path
+        # Generate gif
+        if args.gifs:
+            gif_path = folder / "optim.gif"
+            make_gif(img_paths.values(), gif_path)
+            res_data["optim_img_path"] = str(gif_path)
+        if not args.no_videos:
+            video_path = folder / "optim.webm"
+            make_video(img_paths.values(), video_path)
+            res_data["optim_video_path"] = str(video_path)
         df_data.append(res_data)
     else:
         warnings.warn(f"Skipping missing {res_path}")
