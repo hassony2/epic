@@ -203,6 +203,18 @@ class Scene:
             ]
         return scene_res
 
+    def save_state(self, folder):
+        human_state = self.egohuman.state_dict()
+        torch.save(human_state, folder / "human.pth")
+        for obj_idx, obj in enumerate(self.objects):
+            obj_state = obj.state_dict()
+            torch.save(obj_state, folder / f"obj{obj_idx:02d}.pth")
+
+    def load_state(self, folder):
+        self.egohuman.load_state_dict(torch.load(folder / "human.pth"))
+        for obj_idx, obj in enumerate(self.objects):
+            obj.load_state_dict(torch.load(folder / f"obj{obj_idx:02d}.pth"))
+
     def __len__(self):
         return len(self.data_df)
 

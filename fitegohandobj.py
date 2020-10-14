@@ -46,6 +46,7 @@ parser.add_argument("--save_root", default="tmp")
 parser.add_argument("--rot_nb", default=1, type=int)
 parser.add_argument("--no_crop", action="store_true")
 parser.add_argument("--debug", action="store_true")
+parser.add_argument("--resume", default="", type=str)
 parser.add_argument("--no_obj", action="store_true")
 parser.add_argument(
     "--frame_nb", default=2, type=int, help="Number of frames to optimize"
@@ -100,6 +101,12 @@ for arg_dict, arg_str in zip(args_list, args_str):
         image_size=img_size,
     )
     scene = Scene(data_df, cam)
+    # Reload optimized state
+    if args.resume:
+        scene.load_state(Path(args.resume))
+        print(
+            f"Loaded scene from {args.resume}, resetting object translation."
+        )
     # Initialize object by hand pose
     scene.reset_obj2hand()
     egolosses = EgoLosses(
@@ -137,5 +144,6 @@ for arg_dict, arg_str in zip(args_list, args_str):
         )
     res["opts"] = arg_dict
     res["args"] = vars(args)
+    scene.save_state(save_folder)
     with (save_folder / "res.pkl").open("wb") as p_f:
         pickle.dump(res, p_f)
