@@ -19,6 +19,8 @@ parser.add_argument("--pickle_path", default="tmp.pkl")
 parser.add_argument("--optimizers", default=["adam"], nargs="+")
 parser.add_argument("--lambda_hand_vs", default=[1], type=float, nargs="+")
 parser.add_argument("--lambda_obj_masks", default=[1], type=float, nargs="+")
+parser.add_argument("--lambda_links", default=[1], type=float, nargs="+")
+parser.add_argument("--loss_links", default=["l1"], type=str, nargs="+")
 parser.add_argument(
     "--loss_hand_vs", default=["l1"], type=str, nargs="+", choices=["l1", "l2"]
 )
@@ -103,6 +105,8 @@ for arg_dict, arg_str in zip(args_list, args_str):
     egolosses = EgoLosses(
         lambda_hand_v=arg_dict["lambda_hand_v"],
         loss_hand_v=arg_dict["loss_hand_v"],
+        lambda_link=arg_dict["lambda_link"],
+        loss_link=arg_dict["loss_link"],
         lambda_obj_mask=arg_dict["lambda_obj_mask"],
         loss_obj_mask=arg_dict["loss_obj_mask"],
     )

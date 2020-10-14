@@ -18,6 +18,18 @@ def lift_verts(verts, camintr):
     return unproj3d
 
 
+def preprocess_links(links):
+    """
+    returns [0 1] which encodes for each hand if a link to objects exists
+    """
+    link_rights = [link for link in links if link["side"] == "right"]
+    link_right = 1 if len(link_rights) else 0
+    link_lefts = [link for link in links if link["side"] == "right"]
+    link_left = 1 if len(link_lefts) else 0
+    links = [link_left, link_right]
+    return links
+
+
 class Preprocessor:
     def __init__(
         self, mano_corresp_path="assets/models/MANO_SMPLX_vertex_ids.pkl"
@@ -103,12 +115,15 @@ class Preprocessor:
             sample_confs.append(verts_confs)
             sample_imgs.append(img)
             verts = torch.Tensor(np.stack(sample_verts))
+
+        links = [preprocess_links(info["links"]) for info in fit_infos]
         fit_data = {
             "masks": torch.stack(sample_masks),
             "verts": verts,
             "verts_confs": torch.Tensor(np.stack(sample_confs)),
             "imgs": sample_imgs,
             "ref_hand_rends": ref_hand_rends,
-            "links": [info["links"] for info in fit_infos],
+            "links": links,
+            "mano_corresp": self.mano_corresp,
         }
         return fit_data

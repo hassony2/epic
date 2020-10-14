@@ -3,6 +3,8 @@ import itertools
 KEY_MAPPING = {
     "loss_hand_v": "lhv",
     "lambda_hand_v": "lhvl",
+    "loss_link": "lnk",
+    "lambda_link": "lnkl",
     "loss_obj_mask": "lom",
     "lambda_obj_mask": "loml",
     "focal": "f",
@@ -40,6 +42,8 @@ def process_args(args):
         "lr",
         "loss_hand_v",
         "lambda_hand_v",
+        "loss_link",
+        "lambda_link",
         "lambda_obj_mask",
         "loss_obj_mask",
         "focal",

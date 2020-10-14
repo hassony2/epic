@@ -89,8 +89,8 @@ def ego_viz(
         ax = vizmp.get_axis(
             axes, row_idx=row_idx, col_idx=2, row_nb=sample_nb, col_nb=col_nb
         )
-        ax.imshow(npt.numpify(obj_mask.permute(1, 2, 0)), alpha=0.8)
-        ax.imshow(segm_rend[sample_idx][:, :, :3], alpha=0.8)
+        ax.imshow(npt.numpify(obj_mask.permute(1, 2, 0)), alpha=1)
+        ax.imshow(segm_rend[sample_idx][:, :, :3], alpha=0.5)
 
         # Column 4+: Rendered prediction
         ax.axis("off")

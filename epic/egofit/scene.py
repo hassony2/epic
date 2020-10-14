@@ -4,6 +4,7 @@ import torch
 from epic.egofit.egohuman import EgoHuman
 from epic.egofit.manobj import ManipulatedObject
 from epic.rendering.py3drendutils import batch_render, get_colors
+from epic.lib3d import ops3d
 
 from libyana.renderutils import catmesh
 
@@ -166,9 +167,10 @@ class Scene:
                     image_sizes=[(width, height)],
                     mode="rgb",
                     faces_per_pixel=faces_per_pixel,
-                )
+                ).cpu()
                 viz_verts = all_verts.clone()
                 viz_verts[:, :, 2] = -viz_verts[:, :, 2]
+                # Render front view
                 front_rendres = batch_render(
                     all_verts.new([0, 0, 0.7]) + viz_verts,
                     torch.flip(all_faces, (2,)),  # Compensate for - in verts
@@ -179,8 +181,26 @@ class Scene:
                     image_sizes=[(width, height)],
                     mode="rgb",
                     faces_per_pixel=faces_per_pixel,
-                )
-            scene_res["scene_viz_rend"] = [cam_rendres, front_rendres]
+                ).cpu()
+                # Render side view by rotating around average object point
+                rot_center = torch.cat(obj_verts, 1).mean(1)
+                rot_verts = ops3d.rot_points(all_verts, rot_center)
+                side_rendres = batch_render(
+                    rot_verts,
+                    torch.flip(all_faces, (2,)),  # Compensate for - in verts
+                    colors=all_viz_colors,
+                    K=camintr,
+                    rot=rot,
+                    trans=trans,
+                    image_sizes=[(width, height)],
+                    mode="rgb",
+                    faces_per_pixel=faces_per_pixel,
+                ).cpu()
+            scene_res["scene_viz_rend"] = [
+                cam_rendres,
+                front_rendres,
+                side_rendres,
+            ]
         return scene_res
 
     def __len__(self):
