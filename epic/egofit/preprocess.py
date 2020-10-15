@@ -3,12 +3,16 @@ import pickle
 import pandas as pd
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from epic.io.tarutils import TarReader
 from kornia.geometry.camera import perspective
+from skimage.morphology import skeletonize
 
+from epic.lib2d import grabcut, boxutils, cropping
 from epic.rendering import py3drendutils
 from libyana.renderutils import catmesh
+from libyana.conversions import npt
 
 
 def lift_verts(verts, camintr):
@@ -32,9 +36,14 @@ def preprocess_links(links):
 
 class Preprocessor:
     def __init__(
-        self, mano_corresp_path="assets/models/MANO_SMPLX_vertex_ids.pkl"
+        self,
+        mano_corresp_path="assets/models/MANO_SMPLX_vertex_ids.pkl",
+        crop_size=(256, 256),
+        debug=False,
     ):
+        self.debug = debug
         self.smplx_vertex_nb = 10475
+        self.crop_size = crop_size
         with open(mano_corresp_path, "rb") as p_f:
             self.mano_corresp = pickle.load(p_f)
 
@@ -46,11 +55,11 @@ class Preprocessor:
             df_dict["obj_paths"] = [
                 fit_info["obj_path"],
             ]
-            df_dict["boxes"] = fit_info["boxes"].cpu().numpy()
+            df_dict["boxes"] = npt.numpify(fit_info["boxes"])
             df_dicts.append(df_dict)
         return pd.DataFrame(df_dicts)
 
-    def preprocess_supervision(self, fit_infos):
+    def preprocess_supervision(self, fit_infos, grab_objects=False):
         # Initialize tar reader
         tareader = TarReader()
         sample_masks = []
@@ -58,6 +67,12 @@ class Preprocessor:
         sample_confs = []
         sample_imgs = []
         ref_hand_rends = []
+        # Regions of interest containing hands and objects
+        roi_bboxes = []
+        roi_valid_masks = []
+        # Crops of hand and object masks
+        sample_hand_masks = []
+        sample_objs_masks = []
 
         # Create dummy intrinsic camera for supervision rendering
         focal = 200
@@ -65,7 +80,9 @@ class Preprocessor:
             [[focal, 0, 456 // 2], [0, focal, 256 // 2], [0, 0, 1]]
         )
         camintr_th = torch.Tensor(camintr).unsqueeze(0)
-        for fit_info in fit_infos:
+        # Modelling hand color
+        print("Preprocessing sequence")
+        for fit_info in tqdm(fit_infos):
             img = tareader.read_tar_frame(fit_info["img_path"])
             img_size = img.shape[:2]  # height, width
             # img = cv2.imread(fit_info["img_path"])
@@ -106,10 +123,89 @@ class Preprocessor:
                         K=camintr_th,
                         image_sizes=[(img_size[1], img_size[0])],
                     )
-                ref_hand_rends.append(res[0, :, :, :3].cpu().numpy())
+                ref_hand_rends.append(npt.numpify(res[0, :, :, :3]))
             else:
                 ref_hand_rends.append(np.zeros(img.shape) + 1)
+            hand_mask = npt.numpify(res[0, :, :, 3])
+            obj_masks = fit_info["masks"]
+            # GrabCut objects
+            obj_masks_aggreg = npt.numpify(torch.stack(obj_masks)).sum(0) > 0
+            # Compute region of interest which contains hands and objects
+            xs, ys = np.where((hand_mask + obj_masks_aggreg) > 0)
+            roi_bbox = boxutils.squarify_box(
+                [xs.min(), ys.min(), xs.max(), ys.max()], scale_factor=1.5
+            )
+            roi_bbox = [int(val) for val in roi_bbox]
+            roi_bboxes.append(roi_bbox)
+            img_crop = cropping.crop_cv2(img, roi_bbox, resize=self.crop_size)
 
+            # Compute region of crop which belongs to original image (vs paddding)
+            roi_valid_mask = cropping.crop_cv2(
+                np.ones(img.shape[:2]), roi_bbox, resize=self.crop_size
+            )
+            roi_valid_masks.append(roi_valid_mask)
+
+            # Crop hand and object image
+            hand_mask_crop = (
+                cropping.crop_cv2(hand_mask, roi_bbox, resize=self.crop_size)
+                > 0
+            ).astype(np.int)
+            objs_masks_crop = cropping.crop_cv2(
+                obj_masks_aggreg.astype(np.int),
+                roi_bbox,
+                resize=self.crop_size,
+            ).astype(np.int)
+
+            # Remove object region from hand mask
+            hand_mask_crop[objs_masks_crop > 0] = 0
+            # Extract skeletons
+            skel_objs_masks_crop = skeletonize(
+                objs_masks_crop.astype(np.uint8)
+            )
+            skel_hand_mask_crop = skeletonize(hand_mask_crop.astype(np.uint8))
+
+            grabinfo = grabcut.grab_cut(
+                img_crop.astype(np.uint8),
+                mask=hand_mask_crop,
+                bbox=roi_bbox,
+                bgd_mask=skel_objs_masks_crop,
+                fgd_mask=skel_hand_mask_crop,
+                debug=self.debug,
+            )
+            # Get new hand segmentations
+            hand_mask = grabinfo["grab_mask"]
+            hand_mask[objs_masks_crop > 0] = 0
+            sample_hand_masks.append(hand_mask)
+
+            # Get crops of object masks
+            obj_mask_crops = []
+            for obj_mask in obj_masks:
+                obj_mask_crop = cropping.crop_cv2(
+                    npt.numpify(obj_mask).astype(np.int),
+                    roi_bbox,
+                    resize=self.crop_size,
+                )
+                skel_obj_mask_crop = skeletonize(
+                    obj_mask_crop.astype(np.uint8)
+                )
+                if grab_objects:
+                    raise NotImplementedError(
+                        "Maybe needs also the skeleton of other objects"
+                        "to be labelled as background ?"
+                    )
+                    grabinfo = grabcut.grab_cut(
+                        img_crop,
+                        mask=obj_mask_crop,
+                        bbox=roi_bbox,
+                        bgd_mask=skel_hand_mask_crop,
+                        fgd_mask=skel_obj_mask_crop,
+                        debug=self.debug,
+                    )
+                    obj_mask_crop = grabinfo["grab_mask"]
+                obj_mask_crops.append(obj_mask_crop)
+            sample_objs_masks.append(np.stack(obj_mask_crops))
+
+            # Remove object region from hand mask
             sample_masks.append(torch.stack(fit_info["masks"]))
             sample_verts.append(human_verts)
             sample_confs.append(verts_confs)
@@ -119,6 +215,10 @@ class Preprocessor:
         links = [preprocess_links(info["links"]) for info in fit_infos]
         fit_data = {
             "masks": torch.stack(sample_masks),
+            "roi_bboxes": torch.Tensor(np.stack(roi_bboxes)),
+            "roi_valid_masks": torch.Tensor(np.stack(roi_valid_masks)),
+            "objs_masks_crops": torch.Tensor(np.stack(sample_objs_masks)),
+            "hand_masks_crops": torch.Tensor(np.stack(sample_hand_masks)),
             "verts": verts,
             "verts_confs": torch.Tensor(np.stack(sample_confs)),
             "imgs": sample_imgs,

@@ -1,6 +1,31 @@
 import torch
 
 
+def squarify_box(box, scale_factor=1, min_size=None):
+    """
+    Args:
+        box (list): [min_x, min_y, max_x, max_y]
+        scale_factor (float): controls margin around original tight box
+    Returns:
+        (list): Square box [min_x, min_y, max_x, max_y]
+    """
+    centerx = (box[0] + box[2]) / 2
+    centery = (box[1] + box[3]) / 2
+    spanx = box[2] - box[0]
+    spany = box[3] - box[1]
+    span = scale_factor * max(spanx, spany)
+    radius = span / 2
+    if min_size is not None:
+        radius = max(radius, min_size / 2)
+    new_box = [
+        centerx - radius,
+        centery - radius,
+        centerx + radius,
+        centery + radius,
+    ]
+    return new_box
+
+
 def preprocess_boxes(boxes, squarify=True, padding=10):
     if squarify:
         boxes = squarify_boxes(boxes)
