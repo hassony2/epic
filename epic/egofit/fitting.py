@@ -13,16 +13,27 @@ def fit_human(
     save_folder=Path("tmp"),
     iters=100,
     lr=0.1,
+    block_obj_scale=False,
+    no_obj_optim=False,
+    no_hand_optim=False,
     optimizer="adam",
     optim_shape=False,
     viz_step=10,
     debug=False,
 ):
     scene.cuda()
-    optim_params = scene.get_optim_params() + egolosses.get_optim_params()
+    optim_params = (
+        scene.get_optim_params(
+            no_obj_optim=no_obj_optim, no_hand_optim=no_hand_optim
+        )
+        + egolosses.get_optim_params()
+    )
     print(f"Optimizing {len(optim_params)} parameters")
     optimizer, _ = optim_factory.create_optimizer(
-        optim_params, optim_type=optimizer, lr=lr
+        optim_params,
+        optim_type=optimizer,
+        lr=lr,
+        block_obj_scale=block_obj_scale,
     )
 
     losses = defaultdict(list)

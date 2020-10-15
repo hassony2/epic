@@ -94,15 +94,22 @@ class Scene:
             obj.cpu()
         self.camera.cpu()
 
-    def get_optim_params(self):
+    def get_optim_params(
+        self, no_hand_optim=False, no_obj_optim=False, block_obj_scale=False
+    ):
+        # Initialize list of parameters to optimize
+
+        params = []
         # Collect EgoHuman parameters
-        params = self.egohuman.get_params()
+        if not no_hand_optim:
+            hand_params = self.egohuman.get_params()
+            params.extend(hand_params)
 
         # Aggregate object parameters
-        for obj in self.objects:
-            obj_params = obj.get_params()
-            for obj_param in obj_params:
-                params.append(obj_param)
+        if not no_obj_optim:
+            for obj in self.objects:
+                obj_params = obj.get_params(optim_scale=not block_obj_scale)
+                params.extend(obj_params)
         return params
 
     def reset_obj2hand(self):

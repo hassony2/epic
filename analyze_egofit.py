@@ -4,6 +4,7 @@ from pathlib import Path
 from copy import deepcopy
 import warnings
 
+import cv2
 import pickle
 import pandas as pd
 
@@ -18,9 +19,23 @@ def make_gif(img_paths, gif_path, fps=2):
     clip.write_gif(gif_path)
 
 
-def make_video(img_paths, video_path, fps=2):
+def make_video(img_paths, video_path, fps=2, resize_factor=1):
     img_paths = [str(path) for path in img_paths]
-    clip = editor.ImageSequenceClip(img_paths, fps=fps)
+    if resize_factor != 1:
+        imgs = []
+        for img_path in img_paths:
+            img = cv2.imread(img_path)
+            img = cv2.resize(
+                img,
+                (
+                    int(img.shape[0] * resize_factor),
+                    int(img.shape[1] * resize_factor),
+                ),
+            )
+            imgs.append(img)
+    else:
+        imgs = img_paths
+    clip = editor.ImageSequenceClip(imgs, fps=fps)
     clip.write_videofile(str(video_path))
 
 
@@ -30,6 +45,7 @@ parser.add_argument("--sort_loss", default="hand_v_dists")
 parser.add_argument("--destination", default="results/tables")
 parser.add_argument("--gifs", action="store_true")
 parser.add_argument("--no_videos", action="store_true")
+parser.add_argument("--video_resize", default=0.5, type=float)
 parser.add_argument(
     "--monitor_metrics", nargs="+", default=["hand_v_dists", "obj_mask_iou"]
 )
@@ -67,7 +83,10 @@ for folder_idx, folder in enumerate(save_root.iterdir()):
         # Get last optimized image
         img_paths = res["imgs"]
         img_path = img_paths[list(img_paths)[-1]]
+        print(img_path)
         res_data["last_img_path"] = img_path
+
+        res_data["folder"] = str(folder)
         # Generate gif
         if args.gifs:
             gif_path = folder / "optim.gif"
@@ -75,7 +94,9 @@ for folder_idx, folder in enumerate(save_root.iterdir()):
             res_data["optim_img_path"] = str(gif_path)
         if not args.no_videos:
             video_path = folder / "optim.webm"
-            make_video(img_paths.values(), video_path)
+            make_video(
+                img_paths.values(), video_path, resize_factor=args.video_resize
+            )
             res_data["optim_video_path"] = str(video_path)
         df_data.append(res_data)
     else:

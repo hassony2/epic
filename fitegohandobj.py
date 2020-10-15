@@ -48,12 +48,23 @@ parser.add_argument("--rot_nb", default=1, type=int)
 parser.add_argument("--no_crop", action="store_true")
 parser.add_argument("--debug", action="store_true")
 parser.add_argument("--resume", default="", type=str)
-parser.add_argument("--no_obj", action="store_true")
+
+# Block parameters to ease optimization
+parser.add_argument("--block_obj_scale", action="store_true")
+parser.add_argument("--no_obj_optim", action="store_true")
+parser.add_argument("--no_hand_optim", action="store_true")
 parser.add_argument(
     "--frame_nb", default=2, type=int, help="Number of frames to optimize"
 )
 args = parser.parse_args()
 argutils.print_args(args)
+if args.no_hand_optim and args.no_obj_optim:
+    raise ValueError(
+        "--no_hand_optim and --no_obj_optim should not be both  set"
+    )
+if args.iters > args.viz_step:
+    args.viz_step = args.iters - 1
+
 if args.debug:
     torch.autograd.set_detect_anomaly(True)
     setseeds.set_all_seeds(0)
@@ -135,20 +146,10 @@ for arg_dict, arg_str in zip(args_list, args_str):
         optimizer=arg_dict["optimizer"],
         save_folder=save_folder,
         viz_step=args.viz_step,
+        block_obj_scale=args.block_obj_scale,
+        no_obj_optim=args.no_obj_optim,
+        no_hand_optim=args.no_hand_optim,
     )
-    scene.reset_obj2hand()
-    if not args.no_obj:
-        res = fitting.fit_human(
-            data,
-            supervision,
-            scene,
-            egolosses,
-            iters=args.iters,
-            lr=arg_dict["lr"],
-            optimizer=arg_dict["optimizer"],
-            save_folder=save_folder,
-            viz_step=args.viz_step,
-        )
     res["opts"] = arg_dict
     res["args"] = vars(args)
     scene.save_state(save_folder)
