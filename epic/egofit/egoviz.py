@@ -9,6 +9,23 @@ from libyana.visutils import vizmp
 from epic.rendering.py3drendutils import batch_render
 
 
+def imagify(tensor, normalize_colors=True):
+    # Scale to [0, 1]
+    if normalize_colors:
+        tensor = (tensor - tensor.min()) / (tensor.max() - tensor.min())
+    # Put channels last
+    if tensor.ndim == 3 and tensor.shape[0] <= 4:
+        tensor = tensor.transpose(1, 2, 0)
+    if tensor.ndim == 3 and tensor.shape[2] < 3:
+        tensor = np.concatenate(
+            [tensor, 0.5 * np.ones_like(tensor)[:, :, : 3 - tensor.shape[2]]],
+            2,
+        )
+    if tensor.ndim == 3 and (tensor.shape[2] != 4):
+        tensor = tensor[:, :, :3]
+    return tensor
+
+
 def add_hands(ax, sample_data):
     for side in ["left", "right"]:
         if side in sample_data["hands"]:
@@ -48,12 +65,13 @@ def ego_viz(
     data,
     supervision,
     scene_outputs,
+    loss_metas=None,
     fig_res=2,
     step_idx=0,
     save_folder="tmp",
     sample_nb=4,
 ):
-    segm_rend = npt.numpify(scene_outputs["segm_rend"])
+    # segm_rend = npt.numpify(scene_outputs["segm_rend"])
     viz_rends = [npt.numpify(rend) for rend in scene_outputs["scene_viz_rend"]]
     ref_hand_rends = supervision["ref_hand_rends"]
     col_nb = 3 + len(viz_rends)
@@ -64,10 +82,11 @@ def ego_viz(
     )
     scene_size = len(supervision["imgs"])
     sample_idxs = np.linspace(0, scene_size - 1, sample_nb).astype(np.int)
+    mask_diffs = npt.numpify(loss_metas["mask_diffs"])
 
     for row_idx, sample_idx in enumerate(sample_idxs):
         img = supervision["imgs"][sample_idx][:, :, ::-1]
-        obj_mask = supervision["masks"][sample_idx]
+        # obj_mask = supervision["masks"][sample_idx]
         sample_data = data[sample_idx]
         # Column 1: image and supervision
         ax = vizmp.get_axis(
@@ -89,8 +108,9 @@ def ego_viz(
         ax = vizmp.get_axis(
             axes, row_idx=row_idx, col_idx=2, row_nb=sample_nb, col_nb=col_nb
         )
-        ax.imshow(npt.numpify(obj_mask.permute(1, 2, 0)), alpha=1)
-        ax.imshow(segm_rend[sample_idx][:, :, :3], alpha=0.5)
+        mask_diff = mask_diffs[sample_idx]
+        mask_diff_img = imagify(mask_diff)
+        ax.imshow(mask_diff_img)
 
         # Column 4+: Rendered prediction
         ax.axis("off")

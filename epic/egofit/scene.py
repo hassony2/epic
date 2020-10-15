@@ -4,24 +4,32 @@ import torch
 from epic.egofit.egohuman import EgoHuman
 from epic.egofit.manobj import ManipulatedObject
 from epic.rendering.py3drendutils import batch_render, get_colors
-from epic.lib3d import ops3d
+from epic.lib3d import ops3d, camutils
 
 from libyana.renderutils import catmesh
 
 
 def get_segm_colors(vert_list, faces_list):
-    obj_nb = len(vert_list) - 1
+    mask_nb = len(vert_list)
     batch_size = vert_list[0].shape[0]
     if len(vert_list) != len(faces_list):
         raise ValueError(
-            f"Expected same number of verts {obj_nb} and faces {len(faces_list)}"
+            f"Expected same number of verts {mask_nb} and faces {len(faces_list)}"
         )
     faces_off_idxs = np.cumsum([face.shape[1] for face in faces_list]).tolist()
     segm_onehots = vert_list[0].new_zeros(
-        batch_size, faces_off_idxs[-1], obj_nb
+        batch_size, faces_off_idxs[-1], mask_nb
     )
-    faces_off_idxs.append(-1)
-    for obj_idx in range(obj_nb):
+    faces_off_idxs = (
+        [
+            0,
+        ]
+        + faces_off_idxs
+        + [
+            -1,
+        ]
+    )
+    for obj_idx in range(mask_nb):
         # Skipe body vertices
         obj_start_idx = faces_off_idxs[obj_idx]
         obj_end_idx = faces_off_idxs[obj_idx + 1]
@@ -34,6 +42,8 @@ class Scene:
         self,
         data_df,
         camera,
+        roi_bboxes=None,
+        render_size=(256, 256),
         hand_pca_nb=6,
         vposer_dim=32,
         debug=True,
@@ -41,6 +51,8 @@ class Scene:
         batch_size = len(data_df)
         self.batch_size = batch_size
         self.data_df = data_df
+        self.roi_bboxes = roi_bboxes
+        self.render_size = render_size
         all_obj_paths = np.array(data_df.obj_paths.tolist()).transpose()
         for obj_paths in all_obj_paths:
             matches_first_obj_path = [
@@ -123,7 +135,15 @@ class Scene:
         verts2d = self.camera.project(body_info["verts"])
         body_info["verts2d"] = verts2d
 
-        camintr = self.camera.camintr.to(verts2d.device).unsqueeze(0)
+        origin_camintr = self.camera.camintr.to(verts2d.device).unsqueeze(0)
+        bboxes = self.roi_bboxes.to(origin_camintr.device)
+        camintr = camutils.get_K_crop_resize(
+            origin_camintr.repeat(self.batch_size, 1, 1),
+            bboxes,
+            self.render_size,
+        )
+        print(bboxes)
+        print(camintr)
         rot = self.camera.rot.to(verts2d.device).unsqueeze(0)
         trans = self.camera.trans.to(verts2d.device).unsqueeze(0)
         height, width = self.camera.image_size
@@ -144,7 +164,7 @@ class Scene:
             K=camintr,
             rot=rot,
             trans=trans,
-            image_sizes=[(width, height)],
+            image_sizes=[self.render_size],
             shading="facecolor",
             face_colors=face_colors,
             faces_per_pixel=faces_per_pixel,
@@ -161,7 +181,7 @@ class Scene:
                     all_verts,
                     all_faces,
                     colors=all_viz_colors,
-                    K=camintr,
+                    K=origin_camintr,
                     rot=rot,
                     trans=trans,
                     image_sizes=[(width, height)],
@@ -175,7 +195,7 @@ class Scene:
                     all_verts.new([0, 0, 0.7]) + viz_verts,
                     torch.flip(all_faces, (2,)),  # Compensate for - in verts
                     colors=all_viz_colors,
-                    K=camintr,
+                    K=origin_camintr,
                     rot=rot,
                     trans=trans,
                     image_sizes=[(width, height)],
@@ -189,7 +209,7 @@ class Scene:
                     rot_verts,
                     torch.flip(all_faces, (2,)),  # Compensate for - in verts
                     colors=all_viz_colors,
-                    K=camintr,
+                    K=origin_camintr,
                     rot=rot,
                     trans=trans,
                     image_sizes=[(width, height)],

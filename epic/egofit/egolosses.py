@@ -3,6 +3,7 @@ from torch.nn import functional as torch_f
 from pytorch3d.ops.knn import knn_points
 
 from libyana.metrics import iou as lyiou
+from libyana.conversions import npt
 
 
 class EgoLosses:
@@ -24,8 +25,12 @@ class EgoLosses:
         self.loss_obj_mask = loss_obj_mask
 
     def compute_losses(self, scene_outputs, supervision):
+        loss_meta = {}
         hand_v_loss = self.compute_hand_v_loss(scene_outputs, supervision)
-        obj_mask_loss = self.compute_obj_mask_loss(scene_outputs, supervision)
+        obj_mask_loss, obj_mask_meta = self.compute_obj_mask_loss(
+            scene_outputs, supervision
+        )
+        loss_meta["mask_diffs"] = obj_mask_meta["mask_diffs"]
         link_loss, _ = self.compute_link_loss(scene_outputs, supervision)
         loss = (
             hand_v_loss * self.lambda_hand_v
@@ -38,7 +43,7 @@ class EgoLosses:
             "link": link_loss.item(),
             "loss": loss.item(),
         }
-        return loss, losses
+        return loss, losses, loss_meta
 
     def compute_link_loss(self, scene_output, supervision):
         corresp = supervision["mano_corresp"]
@@ -85,9 +90,13 @@ class EgoLosses:
 
         # Compute mask IoU
         pred_masks = scene_outputs["segm_rend"]
-        pseudo_gt_masks = supervision["masks"].permute(0, 2, 3, 1)
+        pseudo_obj_masks = (
+            supervision["objs_masks_crops"]
+            .permute(0, 2, 3, 1)
+            .to(pred_masks.device)
+        )
         mask_iou = lyiou.batch_mask_iou(
-            (pred_masks > 0), (pseudo_gt_masks > 0)
+            (pred_masks[:, :, :, 1:] > 0), (pseudo_obj_masks > 0)
         ).mean()
         return {"hand_v_dists": dists.item(), "obj_mask_iou": mask_iou.item()}
 
@@ -111,15 +120,21 @@ class EgoLosses:
 
     def compute_obj_mask_loss(self, scene_outputs, supervision):
         pred_masks = scene_outputs["segm_rend"]
-        pseudo_gt_masks = (
-            supervision["masks"].permute(0, 2, 3, 1).to(pred_masks.device)
+        gt_obj_masks = (
+            supervision["objs_masks_crops"]
+            .permute(0, 2, 3, 1)
+            .to(pred_masks.device)
         )
+        gt_hand_masks = supervision["hand_masks_crops"].to(pred_masks.device)
+        gt_masks = torch.cat([gt_hand_masks.unsqueeze(-1), gt_obj_masks], -1)
         if self.loss_obj_mask == "l1":
             loss = torch_f.l1_loss(
-                pseudo_gt_masks, pred_masks, reduction="none"
+                gt_masks, pred_masks, reduction="none"
             ).mean()
         else:
             loss = torch_f.mse_loss(
-                pseudo_gt_masks, pred_masks, reduction="none"
+                gt_masks, pred_masks, reduction="none"
             ).mean()
-        return loss
+        return loss, {
+            "mask_diffs": npt.numpify(gt_masks) - npt.numpify(pred_masks)
+        }

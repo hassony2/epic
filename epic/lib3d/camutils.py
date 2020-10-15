@@ -1,7 +1,7 @@
 import torch
 
 
-def get_K_crop_resize(K, boxes, crop_resize):
+def get_K_crop_resize(K, boxes, crop_resize, invert_xy=True):
     """
     Adapted from https://github.com/BerkeleyAutomation/perception/
         blob/master/perception/camera_intrinsics.py
@@ -11,6 +11,10 @@ def get_K_crop_resize(K, boxes, crop_resize):
     assert boxes.shape[1:] == (4,)
     K = K.float()
     boxes = boxes.float()
+    if invert_xy:
+        boxes = torch.stack(
+            [boxes[:, 1], boxes[:, 0], boxes[:, 3], boxes[:, 2]], 1
+        )
     new_K = K.clone()
 
     crop_resize = torch.tensor(crop_resize, dtype=torch.float)

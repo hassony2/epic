@@ -35,6 +35,7 @@ parser.add_argument("--focals", default=[150], type=float, nargs="+")
 parser.add_argument("--viz_step", default=10, type=int)
 parser.add_argument("--iters", default=400, type=int)
 parser.add_argument("--lrs", default=[0.01], type=float, nargs="+")
+parser.add_argument("--render_res", default=256, type=int, nargs="+")
 parser.add_argument(
     "--loss_types",
     default=["adapt"],
@@ -61,7 +62,8 @@ if args.debug:
 with open(args.pickle_path, "rb") as p_f:
     data = pickle.load(p_f)
 
-preprocessor = Preprocessor()
+render_size = (args.render_res, args.render_res)
+preprocessor = Preprocessor(crop_size=render_size, debug=args.debug)
 # Select frames uniformly for optimization
 frame_idxs = np.linspace(0, len(data) - 1, args.frame_nb).astype(np.int)
 data = [data[idx] for idx in frame_idxs]
@@ -100,7 +102,12 @@ for arg_dict, arg_str in zip(args_list, args_str):
         rot=camrot,
         image_size=img_size,
     )
-    scene = Scene(data_df, cam)
+    scene = Scene(
+        data_df,
+        cam,
+        roi_bboxes=supervision["roi_bboxes"],
+        render_size=render_size,
+    )
     # Reload optimized state
     if args.resume:
         scene.load_state(Path(args.resume))
