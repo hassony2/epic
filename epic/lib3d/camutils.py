@@ -1,7 +1,7 @@
 import torch
 
 
-def get_K_crop_resize(K, boxes, crop_resize, invert_xy=True):
+def get_K_crop_resize(K, boxes, crop_resize, invert_xy=False):
     """
     Adapted from https://github.com/BerkeleyAutomation/perception/
         blob/master/perception/camera_intrinsics.py

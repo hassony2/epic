@@ -1,6 +1,9 @@
+import numpy as np
 import torch
 from torch.nn import functional as torch_f
 from pytorch3d.ops.knn import knn_points
+
+from robust_loss_pytorch.adaptive import AdaptiveLossFunction
 
 from libyana.metrics import iou as lyiou
 from libyana.conversions import npt
@@ -16,6 +19,8 @@ class EgoLosses:
         lambda_obj_mask=1,
         loss_obj_mask="l1",
         norm_hand_v=100,
+        render_size=(256, 256),
+        obj_nb=1,
     ):
         self.lambda_hand_v = lambda_hand_v
         self.loss_hand_v = loss_hand_v
@@ -23,6 +28,17 @@ class EgoLosses:
         self.lambda_link = lambda_link
         self.lambda_obj_mask = lambda_obj_mask
         self.loss_obj_mask = loss_obj_mask
+        self.mask_adaptive_loss = AdaptiveLossFunction(
+            num_dims=((obj_nb + 1) * render_size[0] * render_size[1]),
+            float_dtype=np.float32,
+            device="cuda:0",
+        )
+
+    def get_optim_params(self):
+        if self.loss_obj_mask == "adapt":
+            return list(self.mask_adaptive_loss.parameters())
+        else:
+            return []
 
     def compute_losses(self, scene_outputs, supervision):
         loss_meta = {}
@@ -131,9 +147,14 @@ class EgoLosses:
             loss = torch_f.l1_loss(
                 gt_masks, pred_masks, reduction="none"
             ).mean()
-        else:
+        elif self.loss_obj_mask == "l2":
             loss = torch_f.mse_loss(
                 gt_masks, pred_masks, reduction="none"
+            ).mean()
+        elif self.loss_obj_mask == "adapt":
+            optim_mask_diff = gt_masks - pred_masks
+            loss = self.mask_adaptive_loss.lossfun(
+                optim_mask_diff.view(gt_masks.shape[0], -1)
             ).mean()
         return loss, {
             "mask_diffs": npt.numpify(gt_masks) - npt.numpify(pred_masks)

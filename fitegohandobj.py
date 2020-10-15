@@ -29,7 +29,7 @@ parser.add_argument(
     default=["l1"],
     type=str,
     nargs="+",
-    choices=["l1", "l2"],
+    choices=["l1", "l2", "adapt"],
 )
 parser.add_argument("--focals", default=[150], type=float, nargs="+")
 parser.add_argument("--viz_step", default=10, type=int)

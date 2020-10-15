@@ -141,9 +141,8 @@ class Scene:
             origin_camintr.repeat(self.batch_size, 1, 1),
             bboxes,
             self.render_size,
+            invert_xy=True,
         )
-        print(bboxes)
-        print(camintr)
         rot = self.camera.rot.to(verts2d.device).unsqueeze(0)
         trans = self.camera.trans.to(verts2d.device).unsqueeze(0)
         height, width = self.camera.image_size

@@ -19,7 +19,7 @@ def fit_human(
     debug=False,
 ):
     scene.cuda()
-    optim_params = scene.get_optim_params()
+    optim_params = scene.get_optim_params() + egolosses.get_optim_params()
     print(f"Optimizing {len(optim_params)} parameters")
     optimizer, _ = optim_factory.create_optimizer(
         optim_params, optim_type=optimizer, lr=lr
