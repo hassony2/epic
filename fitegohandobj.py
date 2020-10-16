@@ -96,7 +96,7 @@ argutils.save_args(args, save_root)
 # Simulate multiple objects
 args_list, args_str = exputils.process_args(args)
 print(f"Running {len(args_list)} experiments !")
-for arg_dict, arg_str in zip(args_list, args_str):
+for run_idx, (arg_dict, arg_str) in enumerate(zip(args_list, args_str)):
     save_folder = save_root / arg_str
     save_folder.mkdir(exist_ok=True, parents=True)
     camintr = torch.Tensor(
@@ -155,3 +155,6 @@ for arg_dict, arg_str in zip(args_list, args_str):
     scene.save_state(save_folder)
     with (save_folder / "res.pkl").open("wb") as p_f:
         pickle.dump(res, p_f)
+    print(f"Iteration {run_idx} done !")
+
+print("All iterations done !")

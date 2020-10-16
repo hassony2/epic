@@ -24,12 +24,12 @@ def make_video(img_paths, video_path, fps=2, resize_factor=1):
     if resize_factor != 1:
         imgs = []
         for img_path in img_paths:
-            img = cv2.imread(img_path)
+            img = cv2.imread(img_path)[:, :, ::-1]
             img = cv2.resize(
                 img,
                 (
-                    int(img.shape[0] * resize_factor),
                     int(img.shape[1] * resize_factor),
+                    int(img.shape[0] * resize_factor),
                 ),
             )
             imgs.append(img)
@@ -86,7 +86,6 @@ for folder_idx, folder in enumerate(save_root.iterdir()):
         print(img_path)
         res_data["last_img_path"] = img_path
 
-        res_data["folder"] = str(folder)
         # Generate gif
         if args.gifs:
             gif_path = folder / "optim.gif"
@@ -98,6 +97,9 @@ for folder_idx, folder in enumerate(save_root.iterdir()):
                 img_paths.values(), video_path, resize_factor=args.video_resize
             )
             res_data["optim_video_path"] = str(video_path)
+
+        # Add folder root
+        res_data["folder"] = str(folder)
         df_data.append(res_data)
     else:
         warnings.warn(f"Skipping missing {res_path}")
