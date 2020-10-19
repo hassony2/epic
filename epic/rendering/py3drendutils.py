@@ -37,6 +37,9 @@ def batch_render(
     trans=None,
     colors=None,
     color=(0.53, 0.53, 0.8),  # light_purple
+    ambient_col=0.5,
+    specular_col=0.2,
+    diffuse_col=0.3,
     face_colors=None,
     # color = (0.74117647, 0.85882353, 0.65098039),  # light_blue
     image_sizes=None,
@@ -78,10 +81,10 @@ def batch_render(
         lights = PointLights(device=device, location=[[0.0, 0.0, -3.0]])
         lights = DirectionalLights(
             device=device,
-            direction=((0.6, -0.6, -0.6)),
-            ambient_color=((1, 1, 1),),
-            diffuse_color=((0, 0, 0),),
-            specular_color=((0, 0, 0),),
+            direction=((0.6, -0.6, -0.6),),
+            ambient_color=((ambient_col, ambient_col, ambient_col),),
+            diffuse_color=((diffuse_col, diffuse_col, diffuse_col),),
+            specular_color=((specular_col, specular_col, specular_col),),
         )
         shader = SoftPhongShader(device=device, cameras=cameras, lights=lights)
     elif mode == "silh":
@@ -94,7 +97,9 @@ def batch_render(
     elif (mode == "facecolor") and (shading == "soft"):
         shader = SoftFaceColorShader(face_colors=face_colors)
     else:
-        raise ValueError(f"{shading} not in [facecolor|faceidx|soft]")
+        raise ValueError(
+            f"Unhandled mode {mode} and shading {shading} combination"
+        )
 
     renderer = MeshRenderer(
         rasterizer=MeshRasterizer(

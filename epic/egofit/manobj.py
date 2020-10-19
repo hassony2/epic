@@ -101,8 +101,6 @@ class ManipulatedObject(torch.nn.Module):
 
         # Apply rotation and translation
         rot_verts = verts.bmm(rot_mats)
-        print(self.rot_vecs)
-        print(self.trans)
         rot_verts = rot_verts * self.scale.view(-1, 1, 1).expand(
             self.batch_size, 1, 1
         )

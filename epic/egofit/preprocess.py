@@ -52,9 +52,7 @@ class Preprocessor:
         df_dicts = []
         for fit_info in fit_infos:
             df_dict = {key: fit_info[key] for key in fit_infos_df_keys}
-            df_dict["obj_paths"] = [
-                fit_info["obj_path"],
-            ]
+            df_dict["obj_paths"] = [fit_info["obj_path"]]
             df_dict["boxes"] = npt.numpify(fit_info["boxes"])
             df_dicts.append(df_dict)
         return pd.DataFrame(df_dicts)
@@ -122,6 +120,8 @@ class Preprocessor:
                         color=(1, 0.4, 0.6),
                         K=camintr_th,
                         image_sizes=[(img_size[1], img_size[0])],
+                        mode="rgb",
+                        shading="soft",
                     )
                 ref_hand_rends.append(npt.numpify(res[0, :, :, :3]))
             else:

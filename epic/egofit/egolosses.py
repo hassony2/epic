@@ -20,7 +20,7 @@ class EgoLosses:
         loss_obj_mask="l1",
         norm_hand_v=100,
         render_size=(256, 256),
-        obj_nb=1,
+        obj_nb=2,
     ):
         self.lambda_hand_v = lambda_hand_v
         self.loss_hand_v = loss_hand_v
@@ -29,7 +29,7 @@ class EgoLosses:
         self.lambda_obj_mask = lambda_obj_mask
         self.loss_obj_mask = loss_obj_mask
         self.mask_adaptive_loss = AdaptiveLossFunction(
-            num_dims=((obj_nb + 1) * render_size[0] * render_size[1]),
+            num_dims=(obj_nb * render_size[0] * render_size[1]),
             float_dtype=np.float32,
             device="cuda:0",
         )
@@ -135,7 +135,9 @@ class EgoLosses:
         return loss
 
     def compute_obj_mask_loss(self, scene_outputs, supervision):
-        pred_masks = scene_outputs["segm_rend"]
+        pred_masks = scene_outputs["segm_rend"][
+            :, :, :, :-1
+        ]  # Remove alpha channel
         gt_obj_masks = (
             supervision["objs_masks_crops"]
             .permute(0, 2, 3, 1)
@@ -156,6 +158,7 @@ class EgoLosses:
             loss = self.mask_adaptive_loss.lossfun(
                 optim_mask_diff.view(gt_masks.shape[0], -1)
             ).mean()
-        return loss, {
-            "mask_diffs": npt.numpify(gt_masks) - npt.numpify(pred_masks)
-        }
+        return (
+            loss,
+            {"mask_diffs": npt.numpify(gt_masks) - npt.numpify(pred_masks)},
+        )
