@@ -36,6 +36,7 @@ class Scene:
         camera,
         roi_bboxes=None,
         render_size=(256, 256),
+        blend_gamma=1e-4,
         hand_pca_nb=6,
         vposer_dim=32,
         debug=True,
@@ -44,6 +45,7 @@ class Scene:
         self.batch_size = batch_size
         self.data_df = data_df
         self.roi_bboxes = roi_bboxes
+        self.blend_gamma = blend_gamma
         self.render_size = render_size
         all_obj_paths = np.array(data_df.obj_paths.tolist()).transpose()
         for obj_paths in all_obj_paths:
@@ -73,6 +75,7 @@ class Scene:
         ]
         self.camera = camera
         self.debug = debug
+        self.blend_gamma = blend_gamma
 
     def cuda(self):
         self.egohuman.cuda()
@@ -164,8 +167,10 @@ class Scene:
             trans=trans,
             image_sizes=[self.render_size],
             mode="facecolor",
+            shading="soft",
             face_colors=face_colors,
             faces_per_pixel=faces_per_pixel,
+            blend_gamma=self.blend_gamma,
         )
         scene_res = {
             "body_info": body_info,

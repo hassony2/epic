@@ -21,6 +21,7 @@ class EgoLosses:
         norm_hand_v=100,
         render_size=(256, 256),
         obj_nb=2,
+        mask_mode="mask",
     ):
         self.lambda_hand_v = lambda_hand_v
         self.loss_hand_v = loss_hand_v
@@ -28,11 +29,22 @@ class EgoLosses:
         self.lambda_link = lambda_link
         self.lambda_obj_mask = lambda_obj_mask
         self.loss_obj_mask = loss_obj_mask
-        self.mask_adaptive_loss = AdaptiveLossFunction(
-            num_dims=(obj_nb * render_size[0] * render_size[1]),
-            float_dtype=np.float32,
-            device="cuda:0",
-        )
+        self.mask_mode = mask_mode
+        self.obj_nb = obj_nb
+        if self.mask_mode == "mask":
+            self.mask_adaptive_loss = AdaptiveLossFunction(
+                num_dims=(1 * render_size[0] * render_size[1]),
+                float_dtype=np.float32,
+                device="cuda:0",
+            )
+        elif self.mask_mode in ["segm", "segmask"]:
+            self.mask_adaptive_loss = AdaptiveLossFunction(
+                num_dims=((obj_nb - 1) * render_size[0] * render_size[1]),
+                float_dtype=np.float32,
+                device="cuda:0",
+            )
+        else:
+            raise ValueError(f"{self.mask_mode} not in [mask|segm]")
 
     def get_optim_params(self):
         if self.loss_obj_mask == "adapt":
@@ -135,30 +147,73 @@ class EgoLosses:
         return loss
 
     def compute_obj_mask_loss(self, scene_outputs, supervision):
-        pred_masks = scene_outputs["segm_rend"][
-            :, :, :, :-1
-        ]  # Remove alpha channel
+        rend = scene_outputs["segm_rend"]
+        device = rend.device
         gt_obj_masks = (
-            supervision["objs_masks_crops"]
-            .permute(0, 2, 3, 1)
-            .to(pred_masks.device)
+            supervision["objs_masks_crops"].permute(0, 2, 3, 1).to(device)
         )
-        gt_hand_masks = supervision["hand_masks_crops"].to(pred_masks.device)
-        gt_masks = torch.cat([gt_hand_masks.unsqueeze(-1), gt_obj_masks], -1)
-        if self.loss_obj_mask == "l1":
-            loss = torch_f.l1_loss(
-                gt_masks, pred_masks, reduction="none"
-            ).mean()
-        elif self.loss_obj_mask == "l2":
-            loss = torch_f.mse_loss(
-                gt_masks, pred_masks, reduction="none"
-            ).mean()
-        elif self.loss_obj_mask == "adapt":
-            optim_mask_diff = gt_masks - pred_masks
-            loss = self.mask_adaptive_loss.lossfun(
-                optim_mask_diff.view(gt_masks.shape[0], -1)
-            ).mean()
-        return (
-            loss,
-            {"mask_diffs": npt.numpify(gt_masks) - npt.numpify(pred_masks)},
-        )
+        gt_hand_masks = supervision["hand_masks_crops"].to(device)
+        if self.mask_mode == "segm":
+            pred_masks = rend[:, :, :, :-1]  # Remove alpha channel
+            gt_masks = torch.cat(
+                [gt_hand_masks.unsqueeze(-1), gt_obj_masks], -1
+            )
+            if self.loss_obj_mask == "l1":
+                loss = torch_f.l1_loss(
+                    gt_masks, pred_masks, reduction="none"
+                ).mean()
+            elif self.loss_obj_mask == "l2":
+                loss = torch_f.mse_loss(
+                    gt_masks, pred_masks, reduction="none"
+                ).mean()
+            elif self.loss_obj_mask == "adapt":
+                optim_mask_diff = gt_masks - pred_masks
+                loss = self.mask_adaptive_loss.lossfun(
+                    optim_mask_diff.view(gt_masks.shape[0], -1)
+                ).mean()
+            masked_diffs = npt.numpify(gt_masks) - npt.numpify(pred_masks)
+        elif self.mask_mode == "segmask":
+            pred_masks = rend[:, :, :, :-1]  # Remove alpha channel
+            gt_masks = torch.cat(
+                [gt_hand_masks.unsqueeze(-1), gt_obj_masks], -1
+            )
+            # Get region to penalize by computing complementary from gt masks
+            comp_obj_idxs = [
+                [idx for idx in range(self.obj_nb) if idx != obj_idx]
+                for obj_idx in range(self.obj_nb)
+            ]
+            sup_mask = torch.cat(
+                [
+                    1
+                    - gt_masks[:, :, :, comp_idxs]
+                    .sum(-1, keepdim=True)
+                    .clamp(0, 1)
+                    for comp_idxs in comp_obj_idxs
+                ],
+                -1,
+            )
+            masked_diffs = sup_mask * (gt_masks - pred_masks)
+            if self.loss_obj_mask == "l1":
+                loss = masked_diffs.abs().sum() / sup_mask.sum()
+            elif self.loss_obj_mask == "l2":
+                loss = (masked_diffs ** 2).sum() / sup_mask.sum()
+            elif self.loss_obj_mask == "adapt":
+                loss = self.mask_adaptive_loss.lossfun(
+                    masked_diffs.view(sup_mask.shape[0], -1)
+                ).mean()
+        elif self.mask_mode == "mask":
+            pred_obj_masks = rend[:, :, :, 1:-1]
+            obj_mask_diffs = gt_obj_masks[:, :, :, :] - pred_obj_masks
+            if obj_mask_diffs.shape[-1] != 1:
+                raise NotImplementedError("No handling of multiple objects")
+            sup_mask = (1 - gt_hand_masks).unsqueeze(-1)
+            masked_diffs = sup_mask * obj_mask_diffs
+            if self.loss_obj_mask == "l2":
+                loss = (masked_diffs ** 2).sum() / sup_mask.sum()
+            elif self.loss_obj_mask == "l1":
+                loss = (masked_diffs.abs()).sum() / sup_mask.sum()
+            elif self.loss_obj_mask == "adapt":
+                loss = self.mask_adaptive_loss.lossfun(
+                    masked_diffs.view(sup_mask.shape[0], -1)
+                ).mean()
+        return (loss, {"mask_diffs": masked_diffs})

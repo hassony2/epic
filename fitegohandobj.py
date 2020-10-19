@@ -20,6 +20,8 @@ matplotlib.use("agg")
 parser = argparse.ArgumentParser()
 parser.add_argument("--pickle_path", default="tmp.pkl")
 parser.add_argument("--optimizers", default=["adam"], nargs="+")
+parser.add_argument("--mask_modes", default=["mask"], nargs="+")
+parser.add_argument("--blend_gammas", default=[1e-2], type=float, nargs="+")
 parser.add_argument("--lambda_hand_vs", default=[1], type=float, nargs="+")
 parser.add_argument("--lambda_obj_masks", default=[1], type=float, nargs="+")
 parser.add_argument("--lambda_links", default=[1], type=float, nargs="+")
@@ -119,6 +121,7 @@ for run_idx, (arg_dict, arg_str) in enumerate(zip(args_list, args_str)):
         cam,
         roi_bboxes=supervision["roi_bboxes"],
         render_size=render_size,
+        blend_gamma=arg_dict["blend_gamma"],
     )
     # Reload optimized state
     if args.resume:
@@ -135,6 +138,7 @@ for run_idx, (arg_dict, arg_str) in enumerate(zip(args_list, args_str)):
         loss_link=arg_dict["loss_link"],
         lambda_obj_mask=arg_dict["lambda_obj_mask"],
         loss_obj_mask=arg_dict["loss_obj_mask"],
+        mask_mode=arg_dict["mask_mode"],
     )
 
     res = fitting.fit_human(

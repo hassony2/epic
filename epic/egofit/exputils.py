@@ -1,12 +1,14 @@
 import itertools
 
 KEY_MAPPING = {
+    "blend_gamma": "bg",
     "loss_hand_v": "lhv",
     "lambda_hand_v": "lhvl",
     "loss_link": "lnk",
     "lambda_link": "lnkl",
     "loss_obj_mask": "lom",
     "lambda_obj_mask": "loml",
+    "mask_mode": "mm",
     "focal": "f",
     "optimizer": "opt",
 }
@@ -22,9 +24,9 @@ def get_arg_string(param_dict):
             key_str = key
 
         if isinstance(val, float):
-            param_str += f"{key_str}={val:.2e}"
+            param_str += f"_{key_str}={val:.2e}"
         else:
-            param_str += f"{key_str}={val}"
+            param_str += f"_{key_str}={val}"
     return param_str
 
 
@@ -39,6 +41,7 @@ def process_args(args):
     """
     args = vars(args)
     multi_keys = [
+        "blend_gamma",
         "lr",
         "loss_hand_v",
         "lambda_hand_v",
@@ -46,6 +49,7 @@ def process_args(args):
         "lambda_link",
         "lambda_obj_mask",
         "loss_obj_mask",
+        "mask_mode",
         "focal",
         "optimizer",
     ]

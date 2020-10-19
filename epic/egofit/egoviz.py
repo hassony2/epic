@@ -17,7 +17,9 @@ def imagify(tensor, normalize_colors=True):
     # Put channels last
     if tensor.ndim == 3 and tensor.shape[0] <= 4:
         tensor = tensor.transpose(1, 2, 0)
-    if tensor.ndim == 3 and tensor.shape[2] < 3:
+    if tensor.ndim == 3 and tensor.shape[2] == 1:
+        tensor = tensor[:, :, 0]
+    elif tensor.ndim == 3 and tensor.shape[2] < 3:
         tensor = np.concatenate(
             [tensor, 0.5 * np.ones_like(tensor)[:, :, : 3 - tensor.shape[2]]],
             2,

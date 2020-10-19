@@ -47,6 +47,7 @@ def batch_render(
     bin_size=0,
     shading="soft",
     mode="rgb",
+    blend_gamma=1e-4,
 ):
     device = torch.device("cuda:0")
     K = K.to(device)
@@ -95,7 +96,9 @@ def batch_render(
     elif (mode == "facecolor") and (shading == "hard"):
         shader = FaceColorShader(face_colors=face_colors)
     elif (mode == "facecolor") and (shading == "soft"):
-        shader = SoftFaceColorShader(face_colors=face_colors)
+        shader = SoftFaceColorShader(
+            face_colors=face_colors, blend_gamma=blend_gamma
+        )
     else:
         raise ValueError(
             f"Unhandled mode {mode} and shading {shading} combination"
@@ -128,19 +131,20 @@ def batch_render(
 
 
 class SoftFaceColorShader(torch.nn.Module):
-    def __init__(self, face_colors=None, device="cpu"):
+    def __init__(self, face_colors=None, device="cpu", blend_gamma=1e-2):
         super().__init__()
         batch_s, face_nb, color_nb = face_colors.shape
         vert_face_colors = face_colors.unsqueeze(2).repeat(1, 1, 3, 1)
         self.face_colors = vert_face_colors.view(
             batch_s * face_nb, 3, color_nb
         ).float()
+        self.blend_gamma = blend_gamma
 
     def forward(self, fragments, meshes, **kwargs):
         colors = interpolate_face_attributes(
             fragments.pix_to_face, fragments.bary_coords, self.face_colors
         )
-        blend_params = BlendParams(sigma=1e-4, gamma=1e-2)
+        blend_params = BlendParams(sigma=1e-4, gamma=self.blend_gamma)
         imgs = soft_feature_blending(
             colors, fragments, blend_params=blend_params
         )
