@@ -10,6 +10,7 @@ from epic.rendering.py3drendutils import batch_render
 
 
 def imagify(tensor, normalize_colors=True):
+    tensor = npt.numpify(tensor)
     # Scale to [0, 1]
     if normalize_colors:
         tensor = (tensor - tensor.min()) / (tensor.max() - tensor.min())

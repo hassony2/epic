@@ -20,15 +20,7 @@ def get_segm_colors(vert_list, faces_list):
     segm_onehots = vert_list[0].new_zeros(
         batch_size, faces_off_idxs[-1], mask_nb
     )
-    faces_off_idxs = (
-        [
-            0,
-        ]
-        + faces_off_idxs
-        + [
-            -1,
-        ]
-    )
+    faces_off_idxs = [0] + faces_off_idxs + [-1]
     for obj_idx in range(mask_nb):
         # Skipe body vertices
         obj_start_idx = faces_off_idxs[obj_idx]
@@ -171,7 +163,7 @@ class Scene:
             rot=rot,
             trans=trans,
             image_sizes=[self.render_size],
-            shading="facecolor",
+            mode="facecolor",
             face_colors=face_colors,
             faces_per_pixel=faces_per_pixel,
         )

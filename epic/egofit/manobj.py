@@ -22,7 +22,12 @@ class ManipulatedObject(torch.nn.Module):
     ):
         super().__init__()
         if not os.path.exists(obj_path):
-            raise ValueError(f"Object path {obj_path} does not exist !")
+            # Temp ugly fix, TODO fix
+            obj_path = obj_path.replace(
+                "/gpfsstore/rech/tan/usk19gv/datasets", "local_data/datasets"
+            )
+            if not os.path.exists(obj_path):
+                raise ValueError(f"Object path {obj_path} does not exist !")
         verts_loc, faces_idx, _ = py3dload_obj(obj_path)
 
         assert bboxes.ndim == 2 and bboxes.shape[-1] == 4, (
@@ -96,6 +101,8 @@ class ManipulatedObject(torch.nn.Module):
 
         # Apply rotation and translation
         rot_verts = verts.bmm(rot_mats)
+        print(self.rot_vecs)
+        print(self.trans)
         rot_verts = rot_verts * self.scale.view(-1, 1, 1).expand(
             self.batch_size, 1, 1
         )

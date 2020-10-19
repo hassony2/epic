@@ -13,6 +13,9 @@ from epic.egofit import exputils
 
 from libyana.exputils import argutils
 from libyana.randomutils import setseeds
+import matplotlib
+
+matplotlib.use("agg")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--pickle_path", default="tmp.pkl")
@@ -62,7 +65,7 @@ if args.no_hand_optim and args.no_obj_optim:
     raise ValueError(
         "--no_hand_optim and --no_obj_optim should not be both  set"
     )
-if args.iters > args.viz_step:
+if args.iters < args.viz_step:
     args.viz_step = args.iters - 1
 
 if args.debug:
@@ -109,9 +112,7 @@ for run_idx, (arg_dict, arg_str) in enumerate(zip(args_list, args_str)):
         )
     )
     cam = camera.PerspectiveCamera(
-        camintr=camintr,
-        rot=camrot,
-        image_size=img_size,
+        camintr=camintr, rot=camrot, image_size=img_size
     )
     scene = Scene(
         data_df,

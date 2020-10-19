@@ -14,12 +14,10 @@ from pytorch3d.renderer import (
 )
 from pytorch3d.ops import interpolate_face_attributes
 from pytorch3d.renderer.mesh import textures
+from epic.rendering.blending import soft_feature_blending
 
 
-def get_colors(
-    verts,
-    color=(0.53, 0.53, 0.8),
-):
+def get_colors(verts, color=(0.53, 0.53, 0.8)):
     colors = (
         torch.from_numpy(np.array(color))
         .view(1, 1, 3)
@@ -79,7 +77,11 @@ def batch_render(
     if mode == "rgb" and shading == "soft":
         lights = PointLights(device=device, location=[[0.0, 0.0, -3.0]])
         lights = DirectionalLights(
-            device=device, direction=((0.6, -0.6, -0.6),)
+            device=device,
+            direction=((0.6, -0.6, -0.6)),
+            ambient_color=((1, 1, 1),),
+            diffuse_color=((0, 0, 0),),
+            specular_color=((0, 0, 0),),
         )
         shader = SoftPhongShader(device=device, cameras=cameras, lights=lights)
     elif mode == "silh":
@@ -87,8 +89,10 @@ def batch_render(
         shader = SoftSilhouetteShader(blend_params=blend_params)
     elif shading == "faceidx":
         shader = FaceIdxShader()
-    elif shading == "facecolor":
+    elif (mode == "facecolor") and (shading == "hard"):
         shader = FaceColorShader(face_colors=face_colors)
+    elif (mode == "facecolor") and (shading == "soft"):
+        shader = SoftFaceColorShader(face_colors=face_colors)
     else:
         raise ValueError(f"{shading} not in [facecolor|faceidx|soft]")
 
@@ -104,7 +108,7 @@ def batch_render(
         tex = textures.TexturesVertex(verts_features=colors)
 
         meshes = Meshes(verts=verts, faces=faces, textures=tex)
-    elif mode == "silh":
+    elif mode in ["silh", "facecolor"]:
         meshes = Meshes(verts=verts, faces=faces)
     else:
         raise ValueError(f"Render mode {mode} not in [rgb|silh]")
@@ -114,14 +118,28 @@ def batch_render(
     # from matplotlib import pyplot as plt
     # plt.imshow(square_images.cpu()[0, :, :, 0])
     # plt.savefig("tmp.png")
-    images = torch.flip(
-        square_images,
-        (
-            1,
-            2,
-        ),
-    )[:, height_off:]
+    images = torch.flip(square_images, (1, 2))[:, height_off:]
     return images
+
+
+class SoftFaceColorShader(torch.nn.Module):
+    def __init__(self, face_colors=None, device="cpu"):
+        super().__init__()
+        batch_s, face_nb, color_nb = face_colors.shape
+        vert_face_colors = face_colors.unsqueeze(2).repeat(1, 1, 3, 1)
+        self.face_colors = vert_face_colors.view(
+            batch_s * face_nb, 3, color_nb
+        ).float()
+
+    def forward(self, fragments, meshes, **kwargs):
+        colors = interpolate_face_attributes(
+            fragments.pix_to_face, fragments.bary_coords, self.face_colors
+        )
+        blend_params = BlendParams(sigma=1e-4, gamma=1e-2)
+        imgs = soft_feature_blending(
+            colors, fragments, blend_params=blend_params
+        )
+        return imgs
 
 
 class FaceColorShader(torch.nn.Module):
@@ -134,7 +152,6 @@ class FaceColorShader(torch.nn.Module):
         ).float()
 
     def forward(self, fragments, meshes, **kwargs):
-
         colors = interpolate_face_attributes(
             fragments.pix_to_face, fragments.bary_coords, self.face_colors
         )
