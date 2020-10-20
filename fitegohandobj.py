@@ -59,7 +59,7 @@ parser.add_argument("--block_obj_scale", action="store_true")
 parser.add_argument("--no_obj_optim", action="store_true")
 parser.add_argument("--no_hand_optim", action="store_true")
 parser.add_argument(
-    "--frame_nb", default=2, type=int, help="Number of frames to optimize"
+    "--frame_nb", type=int, help="Number of frames to optimize"
 )
 args = parser.parse_args()
 argutils.print_args(args)
@@ -81,8 +81,9 @@ with open(args.pickle_path, "rb") as p_f:
 render_size = (args.render_res, args.render_res)
 preprocessor = Preprocessor(crop_size=render_size, debug=args.debug)
 # Select frames uniformly for optimization
-frame_idxs = np.linspace(0, len(data) - 1, args.frame_nb).astype(np.int)
-data = [data[idx] for idx in frame_idxs]
+if args.frame_nb is not None:
+    frame_idxs = np.linspace(0, len(data) - 1, args.frame_nb).astype(np.int)
+    data = [data[idx] for idx in frame_idxs]
 
 # Prepare supervision
 data_df = preprocessor.preprocess_df(data)

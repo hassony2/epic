@@ -5,7 +5,13 @@ import pandas as pd
 from functools import lru_cache
 
 
-def framedet2dicts(det, obj_thresh=0.5, hand_thresh=0.5, height=1080, width=1920):
+def row2box(row):
+    return [row.left, row.top, row.right, row.bottom]
+
+
+def framedet2dicts(
+    det, obj_thresh=0.5, hand_thresh=0.5, height=1080, width=1920
+):
     res_dict = {"video_id": det.video_id, "frame": det.frame_number}
     dicts = []
     for obj_det in det.objects:
@@ -45,12 +51,14 @@ def load_video_hoa(video_id, hoa_root):
         video_id (str): PXX_XX video id
         hoa_root (str): path to hand-objects folder
             hand-objects
-                \ P01
-                    \ P01_01.pkl
-                \ ...
+                \\ P01
+                   \\ P01_01.pkl
+                \\ ...
     """
     hoa_root = Path(hoa_root)
-    hoa_list = hoaio.load_detections(hoa_root / video_id[:3] / f"{video_id}.pkl")
+    hoa_list = hoaio.load_detections(
+        hoa_root / video_id[:3] / f"{video_id}.pkl"
+    )
     all_hoa_dicts = []
     for hoa_det in hoa_list:
         hoa_dicts = framedet2dicts(hoa_det)

@@ -38,13 +38,17 @@ def get_hoa_color(obj):
 
 def get_hoa_label(obj):
     if obj.det_type == "hand":
-        hoa_label = obj.hoa_link[:5]
         if obj.side == "right":
-            label = "hand_r" + hoa_label
+            label = "hand_r"
         elif obj.side == "left":
-            label = "hand_l" + hoa_label
+            label = "hand_l"
         else:
             raise ValueError("hand side {obj.side} not in [left|right]")
+        if "hoa_link" in obj.keys():
+            hoa_label = obj.hoa_link[:5]
+            label = label + hoa_label
     else:
         label = "obj"
-    return f"{label}: {obj.score:.2f}"
+    if "score" in obj.keys():
+        label = label + ": {obj.score:.2f}"
+    return label

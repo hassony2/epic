@@ -30,4 +30,4 @@ def add_hands_viz(ax, img, pred_hands, camintr, faces_per_pixel=2):
         K=camintr_th,
         image_sizes=[(img.shape[1], img.shape[0])],
     )
-    ax.imshow(res[0].detach().cpu()[:, :, :3])
+    ax.imshow(res[0].detach().cpu()[:, :, :4], alpha=0.6)

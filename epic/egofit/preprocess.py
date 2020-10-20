@@ -80,6 +80,7 @@ class Preprocessor:
         camintr_th = torch.Tensor(camintr).unsqueeze(0)
         # Modelling hand color
         print("Preprocessing sequence")
+        obj_nb = None
         for fit_info in tqdm(fit_infos):
             img = tareader.read_tar_frame(fit_info["img_path"])
             img_size = img.shape[:2]  # height, width
@@ -179,6 +180,12 @@ class Preprocessor:
 
             # Get crops of object masks
             obj_mask_crops = []
+            if obj_nb is None:
+                obj_nb = len(obj_masks)
+            if len(obj_masks != obj_nb):
+                import pdb
+
+                pdb.set_trace()
             for obj_mask in obj_masks:
                 obj_mask_crop = cropping.crop_cv2(
                     npt.numpify(obj_mask).astype(np.int),
