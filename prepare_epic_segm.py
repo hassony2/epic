@@ -1,5 +1,4 @@
 import argparse
-import os
 import pickle
 import traceback
 
@@ -8,16 +7,12 @@ import matplotlib
 from matplotlib import pyplot as plt
 
 import numpy as np
-from PIL import Image
-import torch
 
 # Get FFMPEG outside env for moviepy
-from tqdm import tqdm
 
 from epic_kitchens.meta import training_labels
-from epic.viz import masksviz, handviz, hoaviz
-from epic.hoa import gethoa, handposes, links
-from epic.io.tarutils import TarReader
+from epic.hoa import gethoa, handposes
+from epic.egofit import prepare
 
 matplotlib.use("agg")
 try:
@@ -28,10 +23,7 @@ except Exception:
 parser = argparse.ArgumentParser()
 parser.add_argument("--split", default="train", choices=["train", "test"])
 parser.add_argument("--show_adv", action="store_true")
-parser.add_argument(
-    "--epic_root",
-    default="local_data/datasets/EPIC-KITCHENS",
-)
+parser.add_argument("--epic_root", default="local_data/datasets/EPIC-KITCHENS")
 parser.add_argument("--fps", default=2, type=int)
 parser.add_argument("--debug", action="store_true")
 parser.add_argument("--no_tar", action="store_true")
@@ -49,10 +41,7 @@ parser.add_argument(
 parser.add_argument(
     "--hands", action="store_true", help="Add predicted hand poses"
 )
-parser.add_argument(
-    "--hoa_root",
-    default="local_data/datasets/epic-hoa",
-)
+parser.add_argument("--hoa_root", default="local_data/datasets/epic-hoa")
 parser.add_argument(
     "--obj_path",
     default=(
@@ -65,9 +54,6 @@ parser.add_argument(
     ),
 )
 args = parser.parse_args()
-
-if not args.no_tar:
-    tareader = TarReader()
 
 # Initialize image parameters
 resize_factor = 456 / 1920  # from original to target resolution
@@ -92,78 +78,24 @@ video_df = annot_df[annot_df.video_id == args.video_id]
 # extended_action_labels, dense_df = labelutils.extend_action_labels(video_df)
 mask_extractor = bboxmasks.MaskExtractor()
 
-frame_template = os.path.join(args.epic_root, "{}/{}/{}/frame_{:010d}.jpg")
 fig = plt.figure(figsize=(5, 4))
-dump_list = []
-
-
-for frame_idx in tqdm(
-    range(args.start_frame, args.end_frame, args.frame_step)
-):
-    frame_name = "frame_{frame_idx:010d}.jpg"
-    frame_subpath = f"./{frame_name}"
-    fig.clf()
-    if args.show_adv:
-        ax = fig.add_subplot(2, 1, 2)
-    else:
-        ax = fig.add_subplot(1, 1, 1)
-    img_path = frame_template.format(
-        args.split, args.video_id[:3], args.video_id, frame_idx
-    )
-    if args.no_tar:
-        img = Image.open(img_path)
-        img = np.array(img)
-    else:
-        img = tareader.read_tar_frame(img_path)
-        img = img[:, :, ::-1]
-    print(img_path)
-    label = f"fr{frame_idx}"
-    ax.imshow(img)
-    hoa_df = hoa_dets[hoa_dets.frame == frame_idx]
-    hoa_links = links.links_from_df(hoa_df, resize_factor=resize_factor)
-    with torch.no_grad():
-        # Extract object masks
-        res = mask_extractor.masks_from_df(
-            img, hoa_df, resize_factor=resize_factor
-        )
-        # Extract hands
-        pred_hands = hand_extractor.hands_from_df(
-            img, hoa_df, resize_factor=resize_factor
-        )
-
-        if len(pred_hands):
-            # Draw hand renderings
-            handviz.add_hands_viz(ax, img, pred_hands, camintr)
-
-            # Draw hand boxes
-            hoaviz.add_hoa_viz(
-                ax, hoa_df, resize_factor=resize_factor, debug=args.debug
-            )
-        if len(res["masks"]):  # TODO remove
-            labels = [
-                f"{cls}: {score:.2f}"
-                for cls, score in zip(res["classes"], res["scores"])
-            ]
-            masksviz.add_masks_viz(
-                ax, res["masks"], res["boxes"], labels=labels, debug=args.debug
-            )
-        if args.debug:
-            fig.savefig(f"tmp_{frame_idx:05d}.png")
-        if args.pickle_path is not None:
-            dump_list.append(
-                {
-                    "masks": res["masks"],
-                    "boxes": res["boxes"],
-                    "obj_path": args.obj_path,
-                    "hands": pred_hands,
-                    "img_path": img_path,
-                    "resize_factor": resize_factor,
-                    "video_id": args.video_id,
-                    "frame_idx": frame_idx,
-                    "links": hoa_links,
-                }
-            )
-if args.pickle_path is not None:
-    with open(args.pickle_path, "wb") as p_f:
-        pickle.dump(dump_list, p_f)
-    print(f"Saved info to {args.pickle_path}")
+prepare.prepare_sequence(
+    args.epic_root,
+    args.video_id,
+    args.start_frame,
+    args.end_frame,
+    args.obj_path,
+    pickle_path=args.pickle_path,
+    frame_step=args.frame_step,
+    fig=fig,
+    show_adv=False,
+    split=args.split,
+    no_tar=args.no_tar,
+    resize_factor=resize_factor,  # from original to target resolution
+    mask_extractor=mask_extractor,
+    hand_extractor=hand_extractor,
+    debug=args.debug,
+    camintr=camintr,
+    hoa_dets=hoa_dets,
+    hoa_root=args.hoa_root,
+)
