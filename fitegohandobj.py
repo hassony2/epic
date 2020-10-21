@@ -95,7 +95,9 @@ for run_idx, (arg_dict, arg_str) in enumerate(zip(args_list, args_str)):
         lambda_obj_mask=arg_dict["lambda_obj_mask"],
         loss_obj_mask=arg_dict["loss_obj_mask"],
         lambda_obj_smooth=arg_dict["lambda_obj_smooth"],
-        loss_obj_smooth=arg_dict["loss_obj_smooth"],
+        lambda_body_smooth=arg_dict["lambda_body_smooth"],
+        loss_obj_smooth=arg_dict["loss_smooth"],
+        loss_body_smooth=arg_dict["loss_smooth"],
         mask_mode=arg_dict["mask_mode"],
     )
 

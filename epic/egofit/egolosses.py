@@ -20,6 +20,8 @@ class EgoLosses:
         loss_obj_mask="l1",
         lambda_obj_smooth=1,
         loss_obj_smooth="l1",
+        lambda_body_smooth=1,
+        loss_body_smooth="l1",
         norm_hand_v=100,
         render_size=(256, 256),
         obj_nb=2,
@@ -38,6 +40,9 @@ class EgoLosses:
         # Smoothness supervision parameters
         self.lambda_obj_smooth = lambda_obj_smooth
         self.loss_obj_smooth = loss_obj_smooth
+        self.lambda_body_smooth = lambda_body_smooth
+        self.loss_body_smooth = loss_body_smooth
+
         self.obj_nb = obj_nb
 
         if self.mask_mode == "mask":
@@ -70,20 +75,32 @@ class EgoLosses:
         loss_meta["mask_diffs"] = obj_mask_meta["mask_diffs"]
         link_loss, _ = self.compute_link_loss(scene_outputs, supervision)
         obj_smooth_loss = self.compute_obj_smooth_loss(scene_outputs)
+        body_smooth_loss = self.compute_body_smooth_loss(scene_outputs)
         loss = (
             hand_v_loss * self.lambda_hand_v
             + obj_mask_loss * self.lambda_obj_mask
             + link_loss * self.lambda_link
             + obj_smooth_loss * self.lambda_obj_smooth
+            + body_smooth_loss * self.lambda_body_smooth
         )
         losses = {
             "hand_v": hand_v_loss.item(),
             "obj_mask": obj_mask_loss.item(),
             "obj_smooth": obj_smooth_loss.item(),
+            "body_smooth": body_smooth_loss.item(),
             "link": link_loss.item(),
             "loss": loss.item(),
         }
         return loss, losses, loss_meta
+
+    def compute_body_smooth_loss(self, scene_output):
+        human_verts = scene_output["body_info"]["verts"]
+        vert_time_offsets = human_verts[1:] - human_verts[:-1]
+        if self.loss_obj_smooth == "l1":
+            loss = vert_time_offsets.abs().mean()
+        elif self.loss_obj_smooth == "l2":
+            loss = (vert_time_offsets ** 2).sum(-1).mean()
+        return loss
 
     def compute_obj_smooth_loss(self, scene_output):
         loss = 0

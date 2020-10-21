@@ -32,7 +32,10 @@ def fit_args():
         "--lambda_obj_smooths", default=[0], type=float, nargs="+"
     )
     parser.add_argument(
-        "--loss_obj_smooths",
+        "--lambda_body_smooths", default=[0], type=float, nargs="+"
+    )
+    parser.add_argument(
+        "--loss_smooths",
         default=["l1"],
         type=str,
         nargs="+",
