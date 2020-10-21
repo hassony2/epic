@@ -5,8 +5,10 @@ from epic.egofit.egohuman import EgoHuman
 from epic.egofit.manobj import ManipulatedObject
 from epic.rendering.py3drendutils import batch_render, get_colors
 from epic.lib3d import ops3d, camutils
+import moviepy.editor as mpy
 
 from libyana.renderutils import catmesh
+from libyana.conversions import npt
 
 
 def get_segm_colors(vert_list, faces_list):
@@ -243,3 +245,27 @@ class Scene:
 
     def __repr__(self):
         return f"egoscene: {len(self.objects)} objects, {len(self)} scenes"
+
+    def save_scene_clip(self, locations=["tmp.webm"], fps=5, imgs=None):
+        if isinstance(locations, str):
+            locations = [locations]
+        with torch.no_grad():
+            viz = self.forward()["scene_viz_rend"]
+            # Stack views horizontally
+            img_seqs = torch.cat(viz, 2)
+            img_seqs = npt.numpify(img_seqs)[:, :, :, :3]
+            if imgs is not None:
+                # BGR2RGB
+                imgs = (
+                    np.stack([npt.numpify(img)[:, :, ::-1] for img in imgs])[
+                        :, :, :, :3
+                    ]
+                    / 255
+                )
+                img_seqs = np.concatenate([imgs, img_seqs], 2)
+            # Renderings have alpha channel and are scaled in [0, 1]
+            clip = mpy.ImageSequenceClip(
+                [frm * 255 for frm in img_seqs], fps=fps
+            )
+        for location in locations:
+            clip.write_videofile(location)

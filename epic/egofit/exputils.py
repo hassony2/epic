@@ -8,9 +8,12 @@ KEY_MAPPING = {
     "lambda_link": "lnkl",
     "loss_obj_mask": "lom",
     "lambda_obj_mask": "loml",
+    "lambda_obj_smooth": "losl",
+    "loss_obj_smooth": "los",
     "mask_mode": "mm",
     "focal": "f",
     "optimizer": "opt",
+    "rts_order": "rtso",
 }
 
 
@@ -48,10 +51,13 @@ def process_args(args):
         "loss_link",
         "lambda_link",
         "lambda_obj_mask",
+        "lambda_obj_smooth",
         "loss_obj_mask",
+        "loss_obj_smooth",
         "mask_mode",
         "focal",
         "optimizer",
+        "rts_order",
     ]
     multi_params = [args[f"{key}s"] for key in multi_keys]
     exp_params = itertools.product(*multi_params)

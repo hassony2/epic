@@ -18,6 +18,8 @@ class EgoLosses:
         loss_link="l1",
         lambda_obj_mask=1,
         loss_obj_mask="l1",
+        lambda_obj_smooth=1,
+        loss_obj_smooth="l1",
         norm_hand_v=100,
         render_size=(256, 256),
         obj_nb=2,
@@ -60,10 +62,12 @@ class EgoLosses:
         )
         loss_meta["mask_diffs"] = obj_mask_meta["mask_diffs"]
         link_loss, _ = self.compute_link_loss(scene_outputs, supervision)
+        # obj_smooth_loss = self.compute_obj_smooth_loss(scene_outputs)
         loss = (
             hand_v_loss * self.lambda_hand_v
             + obj_mask_loss * self.lambda_obj_mask
             + link_loss * self.lambda_link
+            # + obj_smooth_loss * self.lambda_smooth_loss
         )
         losses = {
             "hand_v": hand_v_loss.item(),

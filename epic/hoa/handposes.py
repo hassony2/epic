@@ -43,5 +43,6 @@ class HandExtractor:
                 pred_hands[side] = {
                     "verts": pred_hand["pred_vertices_img"],
                     "faces": pred_hand["faces"],
+                    "hand_pose": pred_hand["pred_hand_pose"],
                 }
         return pred_hands

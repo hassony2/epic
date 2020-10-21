@@ -5,15 +5,17 @@ import torch
 import numpy as np
 import pickle
 from epic.egofit.scene import Scene
-from epic.egofit import fitting
 from epic.egofit import camera
 from epic.egofit.preprocess import Preprocessor
-from epic.egofit.egolosses import EgoLosses
 from epic.egofit import exputils
+from epic.viz import lineviz
+from epic.tracking import rtsmooth
 
+from libyana.visutils import vizmp
 from libyana.exputils import argutils
 from libyana.randomutils import setseeds
 import matplotlib
+from matplotlib import pyplot as plt
 
 matplotlib.use("agg")
 
@@ -21,20 +23,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--pickle_path", default="tmp.pkl")
 parser.add_argument("--optimizers", default=["adam"], nargs="+")
 parser.add_argument("--mask_modes", default=["mask"], nargs="+")
-parser.add_argument("--blend_gammas", default=[100000], type=float, nargs="+")
+parser.add_argument("--blend_gammas", default=[1e-2], type=float, nargs="+")
 parser.add_argument("--lambda_hand_vs", default=[1], type=float, nargs="+")
 parser.add_argument("--lambda_obj_masks", default=[1], type=float, nargs="+")
-parser.add_argument("--rts_orders", default=[1], type=int, nargs="+")
-parser.add_argument("--lambda_obj_smooths", default=[0], type=float, nargs="+")
-parser.add_argument(
-    "--loss_obj_smooths",
-    default=["l1"],
-    type=str,
-    nargs="+",
-    choices=["l1", "l2", "adapt"],
-)
 parser.add_argument("--lambda_links", default=[1], type=float, nargs="+")
 parser.add_argument("--loss_links", default=["l1"], type=str, nargs="+")
+parser.add_argument("--rts_orders", default=[1], type=int, nargs="+")
 parser.add_argument(
     "--loss_hand_vs", default=["l1"], type=str, nargs="+", choices=["l1", "l2"]
 )
@@ -83,7 +77,6 @@ if args.debug:
     torch.autograd.set_detect_anomaly(True)
     setseeds.set_all_seeds(0)
 
-
 with open(args.pickle_path, "rb") as p_f:
     data = pickle.load(p_f)
 
@@ -94,6 +87,7 @@ if args.frame_nb is not None:
     frame_idxs = np.linspace(0, len(data) - 1, args.frame_nb).astype(np.int)
     data = [data[idx] for idx in frame_idxs]
 
+dt = 0.02
 # Prepare supervision
 if args.resume:
     with (Path(args.resume) / "res.pkl").open("rb") as p_f:
@@ -139,51 +133,87 @@ for run_idx, (arg_dict, arg_str) in enumerate(zip(args_list, args_str)):
         render_size=render_size,
         blend_gamma=arg_dict["blend_gamma"],
     )
+    scene.cuda()
     # Reload optimized state
     if args.resume:
         scene.load_state(Path(args.resume))
         print(
             f"Loaded scene from {args.resume}, resetting object translation."
         )
+    scene.save_scene_clip(["tmp.webm", "tmp.mp4"], imgs=supervision["imgs"])
     # Initialize object by hand pose
     scene.reset_obj2hand()
-    egolosses = EgoLosses(
-        lambda_hand_v=arg_dict["lambda_hand_v"],
-        loss_hand_v=arg_dict["loss_hand_v"],
-        lambda_link=arg_dict["lambda_link"],
-        loss_link=arg_dict["loss_link"],
-        lambda_obj_mask=arg_dict["lambda_obj_mask"],
-        loss_obj_mask=arg_dict["loss_obj_mask"],
-        lambda_obj_smooth=arg_dict["lambda_obj_smooth"],
-        loss_obj_smooth=arg_dict["loss_obj_smooth"],
-        mask_mode=arg_dict["mask_mode"],
-    )
+    left_hand_pose = scene.egohuman.left_hand_pose
+    right_hand_pose = scene.egohuman.right_hand_pose
+    pose_embedding = scene.egohuman.pose_embedding
 
-    res = fitting.fit_human(
-        data,
-        supervision,
-        scene,
-        egolosses,
-        iters=args.iters,
-        lr=arg_dict["lr"],
-        optimizer=arg_dict["optimizer"],
-        save_folder=save_folder,
-        viz_step=args.viz_step,
-        block_obj_scale=args.block_obj_scale,
-        no_obj_optim=args.no_obj_optim,
-        no_hand_optim=args.no_hand_optim,
+    # Smooth values
+    smoothed_embedding = rtsmooth.rtsmooth(
+        pose_embedding, dt=dt, order=arg_dict["rts_order"]
+    ).transpose()
+    smoothed_lh_pose = rtsmooth.rtsmooth(
+        left_hand_pose, dt=dt, order=arg_dict["rts_order"]
+    ).transpose()
+    smoothed_rh_pose = rtsmooth.rtsmooth(
+        right_hand_pose, dt=dt, order=arg_dict["rts_order"]
+    ).transpose()
+
+    scene.egohuman.pose_embedding.data[:] = scene.egohuman.pose_embedding.new(
+        smoothed_embedding.transpose()
     )
-    res["opts"] = arg_dict
-    res["args"] = vars(args)
-    res["supervision"] = supervision
-    res["data_df"] = data_df
-    scene.save_state(save_folder)
-    with (save_folder / "res.pkl").open("wb") as p_f:
-        pickle.dump(res, p_f)
-    print(f"Iteration {run_idx} done !")
+    scene.egohuman.left_hand_pose.data[:] = scene.egohuman.left_hand_pose.new(
+        smoothed_lh_pose.transpose()
+    )
+    scene.egohuman.right_hand_pose.data[
+        :
+    ] = scene.egohuman.right_hand_pose.new(smoothed_rh_pose.transpose())
     scene.save_scene_clip(
-        [str(save_folder / "fitted.mp4"), str(save_folder / "fitted.webm")],
-        imgs=supervision["imgs"],
+        ["tmp_smoothed.webm", "tmp_smoothed.mp4"], imgs=supervision["imgs"]
+    )
+    row_nb = 2
+    col_nb = 3
+    fig, axes = plt.subplots(row_nb, col_nb)
+    ax = vizmp.get_axis(
+        axes, row_idx=0, col_idx=0, row_nb=row_nb, col_nb=col_nb
+    )
+    lineviz.add_lines(ax, pose_embedding.transpose(1, 0))
+    ax = vizmp.get_axis(
+        axes, row_idx=0, col_idx=1, row_nb=row_nb, col_nb=col_nb
+    )
+    lineviz.add_lines(ax, left_hand_pose.transpose(1, 0))
+    ax.set_title("left hand")
+    ax = vizmp.get_axis(
+        axes, row_idx=0, col_idx=2, row_nb=row_nb, col_nb=col_nb
+    )
+    lineviz.add_lines(ax, right_hand_pose.transpose(1, 0))
+    ax.legend()
+    ax.set_title("right hand")
+
+    # Smooth pose_embedding
+    ax = vizmp.get_axis(
+        axes, row_idx=1, col_idx=0, row_nb=row_nb, col_nb=col_nb
+    )
+    lineviz.add_lines(
+        ax, pose_embedding.transpose(1, 0), over_lines=smoothed_embedding
     )
 
-print("All iterations done !")
+    # Smooth left hand
+    ax = vizmp.get_axis(
+        axes, row_idx=1, col_idx=1, row_nb=row_nb, col_nb=col_nb
+    )
+    lineviz.add_lines(
+        ax, left_hand_pose.transpose(1, 0), over_lines=smoothed_lh_pose
+    )
+    ax.legend()
+
+    # Smooth right hand
+    ax = vizmp.get_axis(
+        axes, row_idx=1, col_idx=2, row_nb=row_nb, col_nb=col_nb
+    )
+    lineviz.add_lines(
+        ax, right_hand_pose.transpose(1, 0), over_lines=smoothed_rh_pose
+    )
+    ax.legend()
+
+    fig.savefig(f"tmp_rts{arg_dict['rts_order']}_p10_q0_1_{dt}.png")
+    # import pdb; pdb.set_trace()

@@ -182,7 +182,7 @@ class Preprocessor:
             obj_mask_crops = []
             if obj_nb is None:
                 obj_nb = len(obj_masks)
-            if len(obj_masks != obj_nb):
+            if len(obj_masks) != obj_nb:
                 import pdb
 
                 pdb.set_trace()
