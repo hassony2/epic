@@ -25,14 +25,21 @@ class EgoLosses:
         obj_nb=2,
         mask_mode="mask",
     ):
+        # Hand supervision parameters
         self.lambda_hand_v = lambda_hand_v
         self.loss_hand_v = loss_hand_v
         self.norm_hand_v = norm_hand_v
         self.lambda_link = lambda_link
+        # Rendering supervision parameters
         self.lambda_obj_mask = lambda_obj_mask
         self.loss_obj_mask = loss_obj_mask
         self.mask_mode = mask_mode
+
+        # Smoothness supervision parameters
+        self.lambda_obj_smooth = lambda_obj_smooth
+        self.loss_obj_smooth = loss_obj_smooth
         self.obj_nb = obj_nb
+
         if self.mask_mode == "mask":
             self.mask_adaptive_loss = AdaptiveLossFunction(
                 num_dims=(1 * render_size[0] * render_size[1]),
@@ -62,20 +69,33 @@ class EgoLosses:
         )
         loss_meta["mask_diffs"] = obj_mask_meta["mask_diffs"]
         link_loss, _ = self.compute_link_loss(scene_outputs, supervision)
-        # obj_smooth_loss = self.compute_obj_smooth_loss(scene_outputs)
+        obj_smooth_loss = self.compute_obj_smooth_loss(scene_outputs)
         loss = (
             hand_v_loss * self.lambda_hand_v
             + obj_mask_loss * self.lambda_obj_mask
             + link_loss * self.lambda_link
-            # + obj_smooth_loss * self.lambda_smooth_loss
+            + obj_smooth_loss * self.lambda_obj_smooth
         )
         losses = {
             "hand_v": hand_v_loss.item(),
             "obj_mask": obj_mask_loss.item(),
+            "obj_smooth": obj_smooth_loss.item(),
             "link": link_loss.item(),
             "loss": loss.item(),
         }
         return loss, losses, loss_meta
+
+    def compute_obj_smooth_loss(self, scene_output):
+        loss = 0
+        for obj in scene_output["obj_infos"]:
+            obj_verts = obj["verts"]  # (time, vert_nb, 3)
+            # Differences between consecutive time steps
+            vert_time_offsets = obj_verts[1:] - obj_verts[:-1]
+            if self.loss_obj_smooth == "l1":
+                loss += vert_time_offsets.abs().mean()
+            elif self.loss_obj_smooth == "l2":
+                loss += (vert_time_offsets ** 2).sum(-1).mean()
+        return loss
 
     def compute_link_loss(self, scene_output, supervision):
         corresp = supervision["mano_corresp"]

@@ -97,6 +97,8 @@ for folder_idx, folder in enumerate(save_root.iterdir()):
                 img_paths.values(), video_path, resize_factor=args.video_resize
             )
             res_data["optim_video_path"] = str(video_path)
+            # Video of final sequence
+            res_data["final_video_path"] = str(folder / "fitted.webm")
 
         # Add folder root
         res_data["folder"] = str(folder)

@@ -1,4 +1,3 @@
-import argparse
 from pathlib import Path
 
 import torch
@@ -9,7 +8,7 @@ from epic.egofit import fitting
 from epic.egofit import camera
 from epic.egofit.preprocess import Preprocessor
 from epic.egofit.egolosses import EgoLosses
-from epic.egofit import exputils
+from epic.egofit import exputils, fitargs
 
 from libyana.exputils import argutils
 from libyana.randomutils import setseeds
@@ -17,67 +16,7 @@ import matplotlib
 
 matplotlib.use("agg")
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--pickle_path", default="tmp.pkl")
-parser.add_argument("--optimizers", default=["adam"], nargs="+")
-parser.add_argument("--mask_modes", default=["mask"], nargs="+")
-parser.add_argument("--blend_gammas", default=[100000], type=float, nargs="+")
-parser.add_argument("--lambda_hand_vs", default=[1], type=float, nargs="+")
-parser.add_argument("--lambda_obj_masks", default=[1], type=float, nargs="+")
-parser.add_argument("--rts_orders", default=[1], type=int, nargs="+")
-parser.add_argument("--lambda_obj_smooths", default=[0], type=float, nargs="+")
-parser.add_argument(
-    "--loss_obj_smooths",
-    default=["l1"],
-    type=str,
-    nargs="+",
-    choices=["l1", "l2", "adapt"],
-)
-parser.add_argument("--lambda_links", default=[1], type=float, nargs="+")
-parser.add_argument("--loss_links", default=["l1"], type=str, nargs="+")
-parser.add_argument(
-    "--loss_hand_vs", default=["l1"], type=str, nargs="+", choices=["l1", "l2"]
-)
-parser.add_argument(
-    "--loss_obj_masks",
-    default=["l1"],
-    type=str,
-    nargs="+",
-    choices=["l1", "l2", "adapt"],
-)
-parser.add_argument("--focals", default=[150], type=float, nargs="+")
-parser.add_argument("--viz_step", default=10, type=int)
-parser.add_argument("--iters", default=400, type=int)
-parser.add_argument("--lrs", default=[0.01], type=float, nargs="+")
-parser.add_argument("--render_res", default=256, type=int, nargs="+")
-parser.add_argument(
-    "--loss_types",
-    default=["adapt"],
-    choices=["adapt", "l2", "l1", "adapt_dtf", "l2_dtf", "l1_dtf"],
-    nargs="+",
-)
-parser.add_argument("--faces_per_pixels", default=[2], type=int, nargs="+")
-parser.add_argument("--save_root", default="tmp")
-parser.add_argument("--rot_nb", default=1, type=int)
-parser.add_argument("--no_crop", action="store_true")
-parser.add_argument("--debug", action="store_true")
-parser.add_argument("--resume", default="", type=str)
-
-# Block parameters to ease optimization
-parser.add_argument("--block_obj_scale", action="store_true")
-parser.add_argument("--no_obj_optim", action="store_true")
-parser.add_argument("--no_hand_optim", action="store_true")
-parser.add_argument(
-    "--frame_nb", type=int, help="Number of frames to optimize"
-)
-args = parser.parse_args()
-argutils.print_args(args)
-if args.no_hand_optim and args.no_obj_optim:
-    raise ValueError(
-        "--no_hand_optim and --no_obj_optim should not be both  set"
-    )
-if args.iters < args.viz_step:
-    args.viz_step = args.iters - 1
+args = fitargs.fit_args()
 
 if args.debug:
     torch.autograd.set_detect_anomaly(True)
@@ -142,6 +81,7 @@ for run_idx, (arg_dict, arg_str) in enumerate(zip(args_list, args_str)):
     # Reload optimized state
     if args.resume:
         scene.load_state(Path(args.resume))
+        scene.smooth_human_pose()
         print(
             f"Loaded scene from {args.resume}, resetting object translation."
         )

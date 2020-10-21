@@ -1,4 +1,4 @@
-import argparse
+from copy import deepcopy
 from pathlib import Path
 
 import torch
@@ -7,9 +7,8 @@ import pickle
 from epic.egofit.scene import Scene
 from epic.egofit import camera
 from epic.egofit.preprocess import Preprocessor
-from epic.egofit import exputils
+from epic.egofit import exputils, fitargs
 from epic.viz import lineviz
-from epic.tracking import rtsmooth
 
 from libyana.visutils import vizmp
 from libyana.exputils import argutils
@@ -19,59 +18,7 @@ from matplotlib import pyplot as plt
 
 matplotlib.use("agg")
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--pickle_path", default="tmp.pkl")
-parser.add_argument("--optimizers", default=["adam"], nargs="+")
-parser.add_argument("--mask_modes", default=["mask"], nargs="+")
-parser.add_argument("--blend_gammas", default=[1e-2], type=float, nargs="+")
-parser.add_argument("--lambda_hand_vs", default=[1], type=float, nargs="+")
-parser.add_argument("--lambda_obj_masks", default=[1], type=float, nargs="+")
-parser.add_argument("--lambda_links", default=[1], type=float, nargs="+")
-parser.add_argument("--loss_links", default=["l1"], type=str, nargs="+")
-parser.add_argument("--rts_orders", default=[1], type=int, nargs="+")
-parser.add_argument(
-    "--loss_hand_vs", default=["l1"], type=str, nargs="+", choices=["l1", "l2"]
-)
-parser.add_argument(
-    "--loss_obj_masks",
-    default=["l1"],
-    type=str,
-    nargs="+",
-    choices=["l1", "l2", "adapt"],
-)
-parser.add_argument("--focals", default=[150], type=float, nargs="+")
-parser.add_argument("--viz_step", default=10, type=int)
-parser.add_argument("--iters", default=400, type=int)
-parser.add_argument("--lrs", default=[0.01], type=float, nargs="+")
-parser.add_argument("--render_res", default=256, type=int, nargs="+")
-parser.add_argument(
-    "--loss_types",
-    default=["adapt"],
-    choices=["adapt", "l2", "l1", "adapt_dtf", "l2_dtf", "l1_dtf"],
-    nargs="+",
-)
-parser.add_argument("--faces_per_pixels", default=[2], type=int, nargs="+")
-parser.add_argument("--save_root", default="tmp")
-parser.add_argument("--rot_nb", default=1, type=int)
-parser.add_argument("--no_crop", action="store_true")
-parser.add_argument("--debug", action="store_true")
-parser.add_argument("--resume", default="", type=str)
-
-# Block parameters to ease optimization
-parser.add_argument("--block_obj_scale", action="store_true")
-parser.add_argument("--no_obj_optim", action="store_true")
-parser.add_argument("--no_hand_optim", action="store_true")
-parser.add_argument(
-    "--frame_nb", type=int, help="Number of frames to optimize"
-)
-args = parser.parse_args()
-argutils.print_args(args)
-if args.no_hand_optim and args.no_obj_optim:
-    raise ValueError(
-        "--no_hand_optim and --no_obj_optim should not be both  set"
-    )
-if args.iters < args.viz_step:
-    args.viz_step = args.iters - 1
+args = fitargs.fit_args()
 
 if args.debug:
     torch.autograd.set_detect_anomaly(True)
@@ -147,27 +94,11 @@ for run_idx, (arg_dict, arg_str) in enumerate(zip(args_list, args_str)):
     right_hand_pose = scene.egohuman.right_hand_pose
     pose_embedding = scene.egohuman.pose_embedding
 
-    # Smooth values
-    smoothed_embedding = rtsmooth.rtsmooth(
-        pose_embedding, dt=dt, order=arg_dict["rts_order"]
-    ).transpose()
-    smoothed_lh_pose = rtsmooth.rtsmooth(
-        left_hand_pose, dt=dt, order=arg_dict["rts_order"]
-    ).transpose()
-    smoothed_rh_pose = rtsmooth.rtsmooth(
-        right_hand_pose, dt=dt, order=arg_dict["rts_order"]
-    ).transpose()
+    # Smooth pose values
+    smoothed_scene = deepcopy(scene)
+    smoothed_scene.smooth_human_pose(order=arg_dict["rts_order"])
 
-    scene.egohuman.pose_embedding.data[:] = scene.egohuman.pose_embedding.new(
-        smoothed_embedding.transpose()
-    )
-    scene.egohuman.left_hand_pose.data[:] = scene.egohuman.left_hand_pose.new(
-        smoothed_lh_pose.transpose()
-    )
-    scene.egohuman.right_hand_pose.data[
-        :
-    ] = scene.egohuman.right_hand_pose.new(smoothed_rh_pose.transpose())
-    scene.save_scene_clip(
+    smoothed_scene.save_scene_clip(
         ["tmp_smoothed.webm", "tmp_smoothed.mp4"], imgs=supervision["imgs"]
     )
     row_nb = 2
@@ -194,7 +125,9 @@ for run_idx, (arg_dict, arg_str) in enumerate(zip(args_list, args_str)):
         axes, row_idx=1, col_idx=0, row_nb=row_nb, col_nb=col_nb
     )
     lineviz.add_lines(
-        ax, pose_embedding.transpose(1, 0), over_lines=smoothed_embedding
+        ax,
+        pose_embedding.transpose(1, 0),
+        over_lines=smoothed_scene.egohuman.pose_embedding.transpose(1, 0),
     )
 
     # Smooth left hand
@@ -202,7 +135,9 @@ for run_idx, (arg_dict, arg_str) in enumerate(zip(args_list, args_str)):
         axes, row_idx=1, col_idx=1, row_nb=row_nb, col_nb=col_nb
     )
     lineviz.add_lines(
-        ax, left_hand_pose.transpose(1, 0), over_lines=smoothed_lh_pose
+        ax,
+        left_hand_pose.transpose(1, 0),
+        over_lines=smoothed_scene.egohuman.left_hand_pose.transpose(1, 0),
     )
     ax.legend()
 
@@ -211,7 +146,9 @@ for run_idx, (arg_dict, arg_str) in enumerate(zip(args_list, args_str)):
         axes, row_idx=1, col_idx=2, row_nb=row_nb, col_nb=col_nb
     )
     lineviz.add_lines(
-        ax, right_hand_pose.transpose(1, 0), over_lines=smoothed_rh_pose
+        ax,
+        right_hand_pose.transpose(1, 0),
+        over_lines=smoothed_scene.egohuman.right_hand_pose.transpose(1, 0),
     )
     ax.legend()
 

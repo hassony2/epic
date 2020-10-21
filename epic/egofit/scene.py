@@ -240,6 +240,9 @@ class Scene:
         for obj_idx, obj in enumerate(self.objects):
             obj.load_state_dict(torch.load(folder / f"obj{obj_idx:02d}.pth"))
 
+    def smooth_human_pose(self, order=1, dt=1):
+        self.egohuman.smooth_pose(rts_order=order, dt=dt)
+
     def __len__(self):
         return len(self.data_df)
 

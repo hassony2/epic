@@ -2,11 +2,8 @@ import pickle
 
 import torch
 from human_body_prior.tools.model_loader import load_vposer
-from epic.smplifyx import (
-    vposeutils,
-    smplvis,
-    smplutils,
-)
+from epic.smplifyx import vposeutils, smplvis, smplutils
+from epic.tracking import rtsmooth
 
 
 class EgoHuman(torch.nn.Module):
@@ -179,3 +176,26 @@ class EgoHuman(torch.nn.Module):
             ]
         )
         return pose_embedding
+
+    def get_smoothed(self, rts_order=1, dt=1):
+        smoothed_embedding = rtsmooth.rtsmooth_th(
+            self.pose_embedding, dt=dt, order=rts_order
+        )
+        smoothed_lh_pose = rtsmooth.rtsmooth_th(
+            self.left_hand_pose, dt=dt, order=rts_order
+        )
+        smoothed_rh_pose = rtsmooth.rtsmooth_th(
+            self.right_hand_pose, dt=dt, order=rts_order
+        )
+        return {
+            "pose_embedding": smoothed_embedding,
+            "left_hand_pose": smoothed_lh_pose,
+            "right_hand_pose": smoothed_rh_pose,
+        }
+
+    def smooth_pose(self, rts_order=1, dt=1):
+        smoothed_vals = self.get_smoothed(rts_order=rts_order, dt=dt)
+        self.pose_embedding.data[:] = smoothed_vals["pose_embedding"]
+        self.left_hand_pose.data[:] = smoothed_vals["left_hand_pose"]
+        self.right_hand_pose.data[:] = smoothed_vals["right_hand_pose"]
+        print("Smoothed human pose")
