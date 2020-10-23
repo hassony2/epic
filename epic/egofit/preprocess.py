@@ -60,7 +60,7 @@ class Preprocessor:
     def preprocess_supervision(self, fit_infos, grab_objects=False):
         # Initialize tar reader
         tareader = TarReader()
-        sample_masks = []
+        # sample_masks = []
         sample_verts = []
         sample_confs = []
         sample_imgs = []
@@ -80,7 +80,6 @@ class Preprocessor:
         camintr_th = torch.Tensor(camintr).unsqueeze(0)
         # Modelling hand color
         print("Preprocessing sequence")
-        obj_nb = None
         for fit_info in tqdm(fit_infos):
             img = tareader.read_tar_frame(fit_info["img_path"])
             img_size = img.shape[:2]  # height, width
@@ -108,11 +107,12 @@ class Preprocessor:
                 human_verts[corresp] = hand_verts
                 verts_confs[corresp] = 1
 
+            has_hands = len(img_hand_verts) > 0
             # render reference hands
-            img_hand_verts, img_hand_faces, _ = catmesh.batch_cat_meshes(
-                img_hand_verts, img_hand_faces
-            )
-            if len(img_hand_verts):
+            if has_hands:
+                img_hand_verts, img_hand_faces, _ = catmesh.batch_cat_meshes(
+                    img_hand_verts, img_hand_faces
+                )
                 with torch.no_grad():
                     res = py3drendutils.batch_render(
                         img_hand_verts.cuda(),
@@ -125,17 +125,33 @@ class Preprocessor:
                         shading="soft",
                     )
                 ref_hand_rends.append(npt.numpify(res[0, :, :, :3]))
+                hand_mask = npt.numpify(res[0, :, :, 3])
             else:
                 ref_hand_rends.append(np.zeros(img.shape) + 1)
-            hand_mask = npt.numpify(res[0, :, :, 3])
+                hand_mask = np.zeros((img.shape[:2]))
             obj_masks = fit_info["masks"]
             # GrabCut objects
-            obj_masks_aggreg = npt.numpify(torch.stack(obj_masks)).sum(0) > 0
-            # Compute region of interest which contains hands and objects
-            xs, ys = np.where((hand_mask + obj_masks_aggreg) > 0)
-            roi_bbox = boxutils.squarify_box(
-                [xs.min(), ys.min(), xs.max(), ys.max()], scale_factor=1.5
+            has_objs = len(obj_masks) > 0
+            if has_objs:
+                obj_masks_aggreg = (
+                    npt.numpify(torch.stack(obj_masks)).sum(0) > 0
+                )
+            else:
+                obj_masks_aggreg = np.zeros_like(hand_mask)
+            # Detect if some pseudo ground truth masks exist
+            has_both_masks = (hand_mask.max() > 0) and (
+                obj_masks_aggreg.max() > 0
             )
+            if has_both_masks:
+                xs, ys = np.where((hand_mask + obj_masks_aggreg) > 0)
+                # Compute region of interest which contains hands and objects
+                roi_bbox = boxutils.squarify_box(
+                    [xs.min(), ys.min(), xs.max(), ys.max()], scale_factor=1.5
+                )
+            else:
+                rad = min(img.shape[:2])
+                roi_bbox = [0, 0, rad, rad]
+
             roi_bbox = [int(val) for val in roi_bbox]
             roi_bboxes.append(roi_bbox)
             img_crop = cropping.crop_cv2(img, roi_bbox, resize=self.crop_size)
@@ -165,27 +181,24 @@ class Preprocessor:
             )
             skel_hand_mask_crop = skeletonize(hand_mask_crop.astype(np.uint8))
 
-            grabinfo = grabcut.grab_cut(
-                img_crop.astype(np.uint8),
-                mask=hand_mask_crop,
-                bbox=roi_bbox,
-                bgd_mask=skel_objs_masks_crop,
-                fgd_mask=skel_hand_mask_crop,
-                debug=self.debug,
-            )
-            # Get new hand segmentations
-            hand_mask = grabinfo["grab_mask"]
-            hand_mask[objs_masks_crop > 0] = 0
+            # Removing object region from hand can cancel out whole hand !
+            if has_both_masks and hand_mask_crop.max():
+                grabinfo = grabcut.grab_cut(
+                    img_crop.astype(np.uint8),
+                    mask=hand_mask_crop,
+                    bbox=roi_bbox,
+                    bgd_mask=skel_objs_masks_crop,
+                    fgd_mask=skel_hand_mask_crop,
+                    debug=self.debug,
+                )
+                hand_mask = grabinfo["grab_mask"]
+                hand_mask[objs_masks_crop > 0] = 0
+            else:
+                hand_mask = hand_mask_crop
             sample_hand_masks.append(hand_mask)
 
             # Get crops of object masks
             obj_mask_crops = []
-            if obj_nb is None:
-                obj_nb = len(obj_masks)
-            if len(obj_masks) != obj_nb:
-                import pdb
-
-                pdb.set_trace()
             for obj_mask in obj_masks:
                 obj_mask_crop = cropping.crop_cv2(
                     npt.numpify(obj_mask).astype(np.int),
@@ -210,10 +223,13 @@ class Preprocessor:
                     )
                     obj_mask_crop = grabinfo["grab_mask"]
                 obj_mask_crops.append(obj_mask_crop)
-            sample_objs_masks.append(np.stack(obj_mask_crops))
+            if len(obj_mask_crops):
+                sample_objs_masks.append(np.stack(obj_mask_crops))
+            else:
+                sample_objs_masks.append(np.zeros((1, rad, rad)))
 
             # Remove object region from hand mask
-            sample_masks.append(torch.stack(fit_info["masks"]))
+            # sample_masks.append(torch.stack(fit_info["masks"]))
             sample_verts.append(human_verts)
             sample_confs.append(verts_confs)
             sample_imgs.append(img)
@@ -221,7 +237,7 @@ class Preprocessor:
 
         links = [preprocess_links(info["links"]) for info in fit_infos]
         fit_data = {
-            "masks": torch.stack(sample_masks),
+            # "masks": torch.stack(sample_masks),
             "roi_bboxes": torch.Tensor(np.stack(roi_bboxes)),
             "roi_valid_masks": torch.Tensor(np.stack(roi_valid_masks)),
             "objs_masks_crops": torch.Tensor(np.stack(sample_objs_masks)),

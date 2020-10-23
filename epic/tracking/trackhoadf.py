@@ -1,5 +1,5 @@
-import pandas as pd
 from motpy import Detection, MultiObjectTracker
+import pandas as pd
 
 from epic.hoa import gethoa
 from epic.tracking import trackconv
@@ -22,7 +22,12 @@ def track_hoa_df(
     video_id=None,
     verbose=True,
     object_only=False,
+    keep_longest=True,
 ):
+    """
+    Args:
+        keep_longest (bool): find longest object track sequence
+    """
     # Initialize track lists and tracker
     obj_tracker = MultiObjectTracker(dt=dt)
     tracked_obj = []
@@ -86,12 +91,29 @@ def track_hoa_df(
             )
     if verbose:
         obj_tracks = pd.DataFrame(tracked_obj)
-        print_track_info(obj_tracks)
-        tracked_hoa = pd.DataFrame(tracked_obj)
+        if keep_longest:
+            longest_track_idx = (
+                obj_tracks.groupby("track_id").frame.nunique().idxmax()
+            )
+            # Filter object which has longest track
+            tracked_obj = obj_tracks[obj_tracks.track_id == longest_track_idx]
+        print_track_info(tracked_obj)
         if not object_only:
             lh_tracks = pd.DataFrame(tracked_lh)
             rh_tracks = pd.DataFrame(tracked_rh)
             print_track_info(lh_tracks, track_type="left hand")
             print_track_info(rh_tracks, track_type="right hand")
-            tracked_hoa = pd.DataFrame(tracked_obj + tracked_lh + tracked_rh)
+            tracked_hoa = pd.DataFrame(
+                tracked_obj.to_dict("records") + tracked_lh + tracked_rh
+            )
+        else:
+            tracked_hoa = pd.DataFrame(tracked_obj)
+        if keep_longest:
+            start_track_frame = tracked_obj.frame.min()
+            end_track_frame = tracked_obj.frame.max()
+            # Keep only region that focuses on longest track
+            tracked_hoa = tracked_hoa[
+                (tracked_hoa.frame >= start_track_frame)
+                & (tracked_hoa.frame <= end_track_frame)
+            ]
     return tracked_hoa

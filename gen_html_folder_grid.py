@@ -4,7 +4,6 @@ from pathlib import Path
 
 import dominate
 import dominate.tags as dtags
-import pandas as pd
 
 from epic import htmlgrid
 
@@ -15,11 +14,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_rows", default=100, type=int, help="path to image folders"
     )
-    parser.add_argument("--destination", help="Path to html file", default="tmp.html")
+    parser.add_argument(
+        "--destination", help="Path to html file", default="tmp.html"
+    )
     parser.add_argument(
         "--print", action="store_true", help="Prints html doc as string"
     )
-    parser.add_argument("--shuffle", action="store_true", help="Shuffle images")
+    parser.add_argument(
+        "--shuffle", action="store_true", help="Shuffle images"
+    )
     parser.add_argument("--max_img_size", help="Limit image size")
     args = parser.parse_args()
 
@@ -27,11 +30,17 @@ if __name__ == "__main__":
     with doc.head:
         dtags.link(
             rel="stylesheet",
-            href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/2.10.0/github-markdown.css",
+            href=(
+                "https://cdnjs.cloudflare.com/ajax/libs/"
+                "github-markdown-css/2.10.0/github-markdown.css"
+            ),
         )
         dtags.link(
             rel="stylesheet",
-            href="https://www.rocq.inria.fr/cluster-willow/yhasson/markdown-reports/css/perso-git-markdown.css",
+            href=(
+                "https://www.rocq.inria.fr/cluster-willow/yhasson/"
+                "markdown-reports/css/perso-git-markdown.css"
+            ),
         )
 
     grid_cells = []

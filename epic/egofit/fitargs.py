@@ -62,6 +62,8 @@ def fit_args():
     parser.add_argument("--block_obj_scale", action="store_true")
     parser.add_argument("--no_obj_optim", action="store_true")
     parser.add_argument("--no_hand_optim", action="store_true")
+    parser.add_argument("--hand_only_first", action="store_true")
+    parser.add_argument("--hand_iters", default=200, type=int)
     parser.add_argument("--focals", default=[150], type=float, nargs="+")
     parser.add_argument("--render_res", default=256, type=int, nargs="+")
     parser.add_argument("--faces_per_pixels", default=[2], type=int, nargs="+")

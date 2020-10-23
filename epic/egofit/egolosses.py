@@ -199,16 +199,21 @@ class EgoLosses:
             gt_masks = torch.cat(
                 [gt_hand_masks.unsqueeze(-1), gt_obj_masks], -1
             )
+            sup_masks = (
+                (
+                    (gt_hand_masks.unsqueeze(-1).sum([1, 2, 3]) > 0)
+                    & (gt_obj_masks.sum([1, 2, 3]) > 0)
+                )
+                .float()
+                .view(-1, 1, 1, 1)
+            )
+            optim_mask_diff = gt_masks - pred_masks
+            optim_mask_diff = optim_mask_diff * sup_masks
             if self.loss_obj_mask == "l1":
-                loss = torch_f.l1_loss(
-                    gt_masks, pred_masks, reduction="none"
-                ).mean()
+                loss = optim_mask_diff.abs().mean()
             elif self.loss_obj_mask == "l2":
-                loss = torch_f.mse_loss(
-                    gt_masks, pred_masks, reduction="none"
-                ).mean()
+                loss = (optim_mask_diff ** 2).mean()
             elif self.loss_obj_mask == "adapt":
-                optim_mask_diff = gt_masks - pred_masks
                 loss = self.mask_adaptive_loss.lossfun(
                     optim_mask_diff.view(gt_masks.shape[0], -1)
                 ).mean()
@@ -233,6 +238,10 @@ class EgoLosses:
                 ],
                 -1,
             )
+            sup_mask = (
+                (gt_hand_masks.unsqueeze(-1).sum([1, 2, 3]) > 0)
+                & (gt_obj_masks.sum([1, 2, 3]) > 0)
+            ).float().view(-1, 1, 1, 1) * sup_mask
             masked_diffs = sup_mask * (gt_masks - pred_masks)
             if self.loss_obj_mask == "l1":
                 loss = masked_diffs.abs().sum() / sup_mask.sum()
@@ -248,6 +257,12 @@ class EgoLosses:
             if obj_mask_diffs.shape[-1] != 1:
                 raise NotImplementedError("No handling of multiple objects")
             sup_mask = (1 - gt_hand_masks).unsqueeze(-1)
+            # Zero supervision on frames which do not have both hand and masks
+            sup_mask = (
+                (gt_hand_masks.unsqueeze(-1).sum([1, 2, 3]) > 0)
+                & (gt_obj_masks.sum([1, 2, 3]) > 0)
+            ).float().view(-1, 1, 1, 1) * sup_mask
+
             masked_diffs = sup_mask * obj_mask_diffs
             if self.loss_obj_mask == "l2":
                 loss = (masked_diffs ** 2).sum() / sup_mask.sum()

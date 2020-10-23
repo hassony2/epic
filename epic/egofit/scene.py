@@ -5,6 +5,7 @@ from epic.egofit.egohuman import EgoHuman
 from epic.egofit.manobj import ManipulatedObject
 from epic.rendering.py3drendutils import batch_render, get_colors
 from epic.lib3d import ops3d, camutils
+from epic.egofit import proceutils
 import moviepy.editor as mpy
 
 from libyana.renderutils import catmesh
@@ -58,9 +59,9 @@ class Scene:
                 raise ValueError(
                     f"Expected all object paths to be equal, but got {all_obj_paths}"
                 )
-        obj_bboxes = np.stack(data_df.boxes.to_list()).transpose(
-            1, 0, 2
-        )  # (objects, time, 4)
+        # Add dummy boxes for missing detections
+        obj_bboxes = proceutils.preprocess_boxes(data_df.boxes.tolist())
+
         self.egohuman = EgoHuman(
             batch_size=batch_size,
             hand_pca_nb=hand_pca_nb,
@@ -191,7 +192,7 @@ class Scene:
                     trans=trans,
                     image_sizes=[(width, height)],
                     mode="rgb",
-                    faces_per_pixel=faces_per_pixel,
+                    faces_per_pixel=2,
                 ).cpu()
                 viz_verts = all_verts.clone()
                 viz_verts[:, :, 2] = -viz_verts[:, :, 2]
@@ -205,7 +206,7 @@ class Scene:
                     trans=trans,
                     image_sizes=[(width, height)],
                     mode="rgb",
-                    faces_per_pixel=faces_per_pixel,
+                    faces_per_pixel=2,
                 ).cpu()
                 # Render side view by rotating around average object point
                 rot_center = torch.cat(obj_verts, 1).mean(1)
@@ -219,7 +220,7 @@ class Scene:
                     trans=trans,
                     image_sizes=[(width, height)],
                     mode="rgb",
-                    faces_per_pixel=faces_per_pixel,
+                    faces_per_pixel=2,
                 ).cpu()
             scene_res["scene_viz_rend"] = [
                 cam_rendres,

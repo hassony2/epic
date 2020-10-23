@@ -1,15 +1,18 @@
 import os
+from moviepy import editor as mpy
+from matplotlib import pyplot as plt
 import pickle
 from PIL import Image
 import numpy as np
+from tqdm import tqdm
+import torch
 
 from epic.io.tarutils import TarReader
 from epic.viz import masksviz, handviz, hoaviz
 from epic.hoa import gethoa, links
+from epic.tracking import trackhoadf
 
-from matplotlib import pyplot as plt
-from tqdm import tqdm
-import torch
+from libyana.visutils import vizmp
 
 focal = 150
 CAMINTR = np.array([[focal, 0, 456 // 2], [0, focal, 256 // 2], [0, 0, 1]])
@@ -34,6 +37,9 @@ def prepare_sequence(
     camintr=CAMINTR,
     hoa_dets=None,
     hoa_root=None,
+    track_padding=40,
+    segm_padding=20,
+    fps=60,
 ):
     if hoa_dets is None:
         hoa_dets = gethoa.load_video_hoa(video_id, hoa_root=hoa_root)
@@ -41,6 +47,19 @@ def prepare_sequence(
     if not no_tar:
         tareader = TarReader()
     dump_list = []
+    imgs = []
+    # Track hands and objects
+    dt = frame_step / fps
+    hoa_dets = trackhoadf.track_hoa_df(
+        hoa_dets,
+        video_id=video_id,
+        start_frame=max(1, start_frame - track_padding),
+        end_frame=(min(end_frame + track_padding, hoa_dets.frame.max() - 1)),
+        dt=dt,
+    )
+    # Add padding to segmented clip
+    start_frame = max(1, start_frame - segm_padding)
+    end_frame = min(end_frame + track_padding, hoa_dets.frame.max() - 1)
     for frame_idx in tqdm(range(start_frame, end_frame, frame_step)):
         if fig is None:
             fig = plt.figure()
@@ -60,8 +79,8 @@ def prepare_sequence(
         else:
             img = tareader.read_tar_frame(img_path)
             img = img[:, :, ::-1]
-        print(img_path)
         ax.imshow(img)
+        ax.set_title(f"{frame_idx:08d}")
         hoa_df = hoa_dets[hoa_dets.frame == frame_idx]
         hoa_links = links.links_from_df(hoa_df, resize_factor=resize_factor)
         with torch.no_grad():
@@ -95,6 +114,9 @@ def prepare_sequence(
                 )
             if debug:
                 fig.savefig(f"tmp_{frame_idx:05d}.png")
+                img = vizmp.fig2np(fig)
+                imgs.append(img)
+
             if pickle_path is not None:
                 dump_list.append(
                     {
@@ -109,6 +131,11 @@ def prepare_sequence(
                         "links": hoa_links,
                     }
                 )
+
+    clip = mpy.ImageSequenceClip(imgs, fps=int(fps / frame_step / 2))
+    # final_clip = mpy.clips_array([[clip,], [score_clip,]])
+    clip.write_videofile(pickle_path.replace(".pkl", ".webm"))
+    clip.write_videofile(pickle_path.replace(".pkl", ".mp4"))
     if pickle_path is not None:
         with open(pickle_path, "wb") as p_f:
             pickle.dump(dump_list, p_f)

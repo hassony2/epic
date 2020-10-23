@@ -12,6 +12,7 @@ def fit_human(
     egolosses,
     save_folder=Path("tmp"),
     iters=100,
+    iters_off=0,
     lr=0.1,
     block_obj_scale=False,
     no_obj_optim=False,
@@ -37,7 +38,7 @@ def fit_human(
 
     losses = defaultdict(list)
     img_paths = OrderedDict()
-    for iter_idx in tqdm(range(iters)):
+    for iter_idx in tqdm(range(iters_off, iters_off + iters)):
         show_iter = iter_idx % viz_step == 0
         scene_outputs = scene.forward(viz_views=show_iter)
         loss, step_losses, loss_metas = egolosses.compute_losses(

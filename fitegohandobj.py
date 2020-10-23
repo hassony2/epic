@@ -100,13 +100,41 @@ for run_idx, (arg_dict, arg_str) in enumerate(zip(args_list, args_str)):
         loss_body_smooth=arg_dict["loss_smooth"],
         mask_mode=arg_dict["mask_mode"],
     )
-
+    if args.hand_only_first:
+        hand_egolosses = EgoLosses(
+            lambda_hand_v=arg_dict["lambda_hand_v"],
+            loss_hand_v=arg_dict["loss_hand_v"],
+            lambda_link=0,
+            lambda_obj_mask=0,
+            lambda_obj_smooth=0,
+            lambda_body_smooth=arg_dict["lambda_body_smooth"],
+            loss_body_smooth=arg_dict["loss_smooth"],
+        )
+        res = fitting.fit_human(
+            data,
+            supervision,
+            scene,
+            hand_egolosses,
+            iters=args.hand_iters,
+            lr=arg_dict["lr"],
+            optimizer=arg_dict["optimizer"],
+            save_folder=save_folder,
+            viz_step=args.viz_step,
+            block_obj_scale=True,
+            no_obj_optim=True,
+            no_hand_optim=False,
+        )
+        scene.reset_obj2hand()
+        iters_off = args.hand_iters
+    else:
+        iters_off = 0
     res = fitting.fit_human(
         data,
         supervision,
         scene,
         egolosses,
         iters=args.iters,
+        iters_off=iters_off,
         lr=arg_dict["lr"],
         optimizer=arg_dict["optimizer"],
         save_folder=save_folder,

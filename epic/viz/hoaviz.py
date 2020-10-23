@@ -44,7 +44,7 @@ def get_hoa_label(obj):
             label = "hand_l"
         else:
             raise ValueError("hand side {obj.side} not in [left|right]")
-        if "hoa_link" in obj.keys():
+        if "hoa_link" in obj.keys() and (obj.hoa_link == obj.hoa_link):
             hoa_label = obj.hoa_link[:5]
             label = label + hoa_label
     else:

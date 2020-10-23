@@ -14,6 +14,8 @@ def track2dicts(tracks, frame_idx, video_id, det_type="object", side=np.nan):
             side=side,
             frame=frame_idx,
             video_id=video_id,
+            hoa_link=np.nan,
+            score=1,
         )
         track_dicts.append(track_dict)
     return track_dicts
