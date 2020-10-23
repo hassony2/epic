@@ -77,7 +77,7 @@ for run_idx, (arg_dict, arg_str) in enumerate(zip(args_list, args_str)):
         roi_bboxes=supervision["roi_bboxes"],
         render_size=render_size,
         blend_gamma=arg_dict["blend_gamma"],
-        hand_pca_nb=arg_dict["hand_pca_nb"],
+        hand_pca_nb=args.hand_pca_nb,
     )
     # Reload optimized state
     if args.resume:

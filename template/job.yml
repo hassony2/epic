@@ -35,5 +35,8 @@ pickle_path:
 lambda_obj_smooth:
 - 0.0001
 lambda_body_smooth:
-- 0.0
-
+- 100
+date:
+- 2020_10_23
+prefix:
+- goodbodysmoothparams
