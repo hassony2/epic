@@ -34,6 +34,7 @@ def fit_args():
     parser.add_argument(
         "--lambda_body_smooths", default=[0], type=float, nargs="+"
     )
+    parser.add_argument("--hand_pca_nb", default=16, type=int)
     parser.add_argument(
         "--loss_smooths",
         default=["l1"],

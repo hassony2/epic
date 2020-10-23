@@ -6,4 +6,4 @@ which conda
 conda activate frankmocap2
 which python
 echo $HOSTNAME
-python fitegohandobj.py --pickle_path results/preprocess_slow/{pickle_path}.pkl --iters 201 --lr 0.01 --loss_obj_masks l1  --lambda_hand_vs 1 --mask_modes mask --lambda_obj_masks 0.001 --lambda_links 0 --lambda_obj_smooth {lambda_obj_smooth} --lambda_body_smooth {lambda_body_smooth} --loss_smooth l2 --save_root results/2020_10_23_batch/{pickle_path} --hand_only_first  --viz_step 100
+python fitegohandobj.py --pickle_path results/preprocess_slow/{pickle_path}.pkl --iters 201 --lr 0.01 --loss_obj_masks l1  --lambda_hand_vs 1 --mask_modes mask --lambda_obj_masks 0.001 --lambda_links 0 --lambda_obj_smooth {lambda_obj_smooth} --lambda_body_smooth {lambda_body_smooth} --loss_smooth l2 --save_root results/{data}/{prefix}/{pickle_path} --hand_only_first  --viz_step 100 --render_res 200
