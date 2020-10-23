@@ -128,7 +128,7 @@ class Scene:
             z_offs = torch.stack(z_offs)
             obj.init_scale_trans_from_depth(z_offs, camintr, camextr)
 
-    def forward(self, faces_per_pixel=10, viz_views=True):
+    def forward(self, faces_per_pixel=10, viz_views=True, min_depth=0.001):
         body_info = self.egohuman.forward()
         obj_infos = [obj.forward() for obj in self.objects]
         body_verts = body_info["verts"]
@@ -174,6 +174,7 @@ class Scene:
             face_colors=face_colors,
             faces_per_pixel=faces_per_pixel,
             blend_gamma=self.blend_gamma,
+            min_depth=min_depth,
         )
         scene_res = {
             "body_info": body_info,
@@ -193,6 +194,7 @@ class Scene:
                     image_sizes=[(width, height)],
                     mode="rgb",
                     faces_per_pixel=2,
+                    min_depth=min_depth,
                 ).cpu()
                 viz_verts = all_verts.clone()
                 viz_verts[:, :, 2] = -viz_verts[:, :, 2]
@@ -206,6 +208,7 @@ class Scene:
                     trans=trans,
                     image_sizes=[(width, height)],
                     mode="rgb",
+                    min_depth=min_depth,
                     faces_per_pixel=2,
                 ).cpu()
                 # Render side view by rotating around average object point
@@ -219,6 +222,7 @@ class Scene:
                     rot=rot,
                     trans=trans,
                     image_sizes=[(width, height)],
+                    min_depth=min_depth,
                     mode="rgb",
                     faces_per_pixel=2,
                 ).cpu()

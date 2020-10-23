@@ -48,6 +48,7 @@ def batch_render(
     shading="soft",
     mode="rgb",
     blend_gamma=1e-4,
+    min_depth=None,
 ):
     device = torch.device("cuda:0")
     K = K.to(device)
@@ -110,6 +111,10 @@ def batch_render(
         ),
         shader=shader,
     )
+    if min_depth is not None:
+        verts = torch.cat(
+            [verts[:, :, :2], verts[:, :, 2:].clamp(min_depth)], 2
+        )
     if mode == "rgb":
         if colors is None:
             colors = get_colors(verts, color)
