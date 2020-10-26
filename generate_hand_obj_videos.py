@@ -8,22 +8,11 @@ from matplotlib import pyplot as plt
 import moviepy.editor as mpy
 import numpy as np
 import pandas as pd
-from PIL import Image
 import torch
 from tqdm import tqdm
 
 from epic_kitchens.meta import training_labels
-from libyana.visutils import detect2d
-from libyana.metrics.iou import get_iou
-from libyana.transformutils.handutils import get_affine_transform, transform_img
 
-from epic.boxutils import (
-    epic_box_to_norm,
-    get_center_scale,
-    get_closest,
-    extend_props,
-    extend_labels,
-)
 from epic import displayutils
 from epic import labelutils
 from epic.viz import hoaviz, boxgtviz, masksviz
@@ -51,11 +40,7 @@ except Exception:
 parser = argparse.ArgumentParser()
 parser.add_argument("--split", default="train", choices=["train", "test"])
 parser.add_argument("--show_adv", action="store_true")
-parser.add_argument(
-    "--epic_root",
-    default="local_data/datasets/EPIC-KITCHENS",
-)
-parser.add_argument("--use_tar", action="store_true")
+parser.add_argument("--epic_root", default="local_data/datasets/EPIC-KITCHENS")
 parser.add_argument("--fps", default=2, type=int)
 parser.add_argument("--debug", action="store_true")
 parser.add_argument("--video_ids", type=int, nargs="+")
@@ -69,19 +54,22 @@ parser.add_argument(
     "--mask_mode", default="grabcut", help=["epic", "maskrcnn", "grabcut"]
 )
 parser.add_argument(
-    "--hoa", action="store_true", help="Add predicted hand and object bbox annotations"
+    "--hoa",
+    action="store_true",
+    help="Add predicted hand and object bbox annotations",
 )
-parser.add_argument("--hands", action="store_true", help="Add predicted hand poses")
 parser.add_argument(
-    "--hoa_root",
-    default="local_data/datasets/epic-hoa",
+    "--hands", action="store_true", help="Add predicted hand poses"
 )
+parser.add_argument("--hoa_root", default="local_data/datasets/epic-hoa")
 args = parser.parse_args()
 
 if args.video_ids is not None:
     args.video_ids = [f"{video_id:02d}" for video_id in args.video_ids]
     if args.person_ids is None:
-        raise ValueError("--person_ids should be provided when --video_ids is provided")
+        raise ValueError(
+            "--person_ids should be provided when --video_ids is provided"
+        )
 
 if args.person_ids is not None:
     args.person_ids = [f"P{person_id:02d}" for person_id in args.person_ids]
@@ -96,7 +84,9 @@ if args.video_ids is not None:
         video_full_ids.append(f"{person_id}_{video_id}")
     annot_nb = len(annot_df)
     annot_df = annot_df[annot_df.video_id.isin(video_full_ids)]
-    print(f"Kept {len(annot_df)} / {annot_nb} actions with video_id {video_full_ids}")
+    print(
+        f"Kept {len(annot_df)} / {annot_nb} actions with video_id {video_full_ids}"
+    )
 else:
     video_full_ids = annot_df.video_id.unique()
     args.person_ids = [vid[:3] for vid in video_full_ids]
@@ -104,11 +94,15 @@ else:
 if args.verb_filter is not None:
     annot_nb = len(annot_df)
     annot_df = annot_df[annot_df.verb == args.verb_filter]
-    print(f"Kept {len(annot_df)} / {annot_nb} actions with verb {args.verb_filter}")
+    print(
+        f"Kept {len(annot_df)} / {annot_nb} actions with verb {args.verb_filter}"
+    )
 if args.noun_filters is not None:
     annot_nb = len(annot_df)
     annot_df = annot_df[annot_df.noun.isin(args.noun_filters)]
-    print(f"Kept {len(annot_df)} / {annot_nb} actions with nouns {args.noun_filters}")
+    print(
+        f"Kept {len(annot_df)} / {annot_nb} actions with nouns {args.noun_filters}"
+    )
 
 # Get frame_idx : action_label frames
 obj_dfs = []
@@ -144,7 +138,9 @@ for video_segm_idx in video_segm_idxs:
         segm_df = dense_df[dense_df.action_idx == video_segm_idx]
         video_full_id = segm_df.video_id.values[0]
         if args.hoa:
-            hoa_dets = gethoa.load_video_hoa(video_full_id, hoa_root=args.hoa_root)
+            hoa_dets = gethoa.load_video_hoa(
+                video_full_id, hoa_root=args.hoa_root
+            )
             if args.mask_mode == "epic":
                 masks_dets = getmasks.load_video_masks(
                     video_full_id,
@@ -157,10 +153,14 @@ for video_segm_idx in video_segm_idxs:
             elif args.mask_mode == "grabcut":
                 pass
             else:
-                raise ValueError(f"mask_mode {args.mask_mode} not in [epic|maskrcnn]")
+                raise ValueError(
+                    f"mask_mode {args.mask_mode} not in [epic|maskrcnn]"
+                )
         if args.gt_objects:
             obj_df = labelutils.get_obj_labels(
-                video_id=video_full_id, person_id=video_full_id[:3], interpolate=True
+                video_id=video_full_id,
+                person_id=video_full_id[:3],
+                interpolate=True,
             )
         person_id = segm_df.participant_id.values[0]
         verb = segm_df.verb.values[0]
@@ -201,7 +201,10 @@ for video_segm_idx in video_segm_idxs:
                 if args.hoa:
                     hoa_df = hoa_dets[hoa_dets.frame == frame_idx]
                     hoaviz.add_hoa_viz(
-                        ax, hoa_df, resize_factor=resize_factor, debug=args.debug
+                        ax,
+                        hoa_df,
+                        resize_factor=resize_factor,
+                        debug=args.debug,
                     )
                     if args.mask_mode == "epic":
                         masks_df = masks_dets[masks_dets.frame == frame_idx]
@@ -216,7 +219,9 @@ for video_segm_idx in video_segm_idxs:
                             )
                         labels = [
                             f"{cls}: {score:.2f}"
-                            for cls, score in zip(res["classes"], res["scores"])
+                            for cls, score in zip(
+                                res["classes"], res["scores"]
+                            )
                         ]
                         masksviz.add_masks_viz(
                             ax,
@@ -230,7 +235,9 @@ for video_segm_idx in video_segm_idxs:
                         masks, boxes = grabmasks.masks_from_df(
                             img, hoa_df, resize_factor=resize_factor
                         )
-                        masksviz.add_masks_viz(ax, masks, boxes, debug=args.debug)
+                        masksviz.add_masks_viz(
+                            ax, masks, boxes, debug=args.debug
+                        )
                     if len(hoa_df) and args.hands:
                         hands_df = handposes.get_hands(
                             hoa_df,
@@ -251,14 +258,18 @@ for video_segm_idx in video_segm_idxs:
                 ax.imshow(adv_colors)
                 ax.axis("off")
             fig.canvas.draw()
-            data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep="")
+            data = np.fromstring(
+                fig.canvas.tostring_rgb(), dtype=np.uint8, sep=""
+            )
             data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
             if args.debug:
                 os.makedirs("tmp", exist_ok=True)
                 fig.savefig("tmp/tmp{frame_idx}.png")
             segm_images.append(data)
         # score_clip = mpy.ImageSequenceClip(score_plots, fps=8)
-        import pdb; pdb.set_trace()
+        import pdb
+
+        pdb.set_trace()
         clip = mpy.ImageSequenceClip(segm_images, fps=args.fps)
         # final_clip = mpy.clips_array([[clip,], [score_clip,]])
         clip.write_videofile(rendered_path)

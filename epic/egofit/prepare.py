@@ -112,10 +112,10 @@ def prepare_sequence(
                 masksviz.add_masks_viz(
                     ax, res["masks"], res["boxes"], labels=labels, debug=debug
                 )
+            img = vizmp.fig2np(fig)
+            imgs.append(img)
             if debug:
                 fig.savefig(f"tmp_{frame_idx:05d}.png")
-                img = vizmp.fig2np(fig)
-                imgs.append(img)
 
             if pickle_path is not None:
                 dump_list.append(

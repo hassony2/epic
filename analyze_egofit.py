@@ -44,6 +44,7 @@ parser.add_argument("--save_root", default="tmp")
 parser.add_argument("--sort_loss", default="hand_v_dists")
 parser.add_argument("--destination", default="results/tables")
 parser.add_argument("--gifs", action="store_true")
+parser.add_argument("--subfolders", action="store_true")
 parser.add_argument("--no_videos", action="store_true")
 parser.add_argument("--video_resize", default=0.5, type=float)
 parser.add_argument(
@@ -60,7 +61,15 @@ save_root = Path(args.save_root)
 results = []
 df_data = []
 plots = defaultdict(list)
-for folder_idx, folder in enumerate(save_root.iterdir()):
+
+if args.subfolders:
+    folders = []
+    for folder in save_root.iterdir():
+        for subfolder in folder.iterdir():
+            folders.append(subfolder)
+else:
+    folders = list(save_root.iterdir())
+for folder_idx, folder in enumerate(folders):
     res_path = folder / "res.pkl"
     if res_path.exists():
         print(f"{res_path}")

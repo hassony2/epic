@@ -1,22 +1,15 @@
 import argparse
 import os
-import pickle
-import tarfile
 
 import matplotlib
 
-matplotlib.use("agg")
 from matplotlib import pyplot as plt
 
 import numpy as np
-from PIL import Image
 import moviepy.editor as mpy
 from tqdm import tqdm
 
 from epic_kitchens.meta import training_labels
-from libyana.visutils import detect2d
-from libyana.metrics.iou import get_iou
-from libyana.transformutils.handutils import get_affine_transform, transform_img
 
 from epic import displayutils
 from epic import labelutils
@@ -24,13 +17,12 @@ from epic.hoa import gethoa
 from epic.masks import getmasks
 from epic.viz import hoaviz, boxgtviz
 from epic.hpose import handposes, handviz
-from epic.io.tarutils import TarReader
+
+matplotlib.use("agg")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--split", default="train", choices=["train", "test"])
-parser.add_argument(
-    "--epic_root", default="local_data/datasets/EPIC-KITCHENS",
-)
+parser.add_argument("--epic_root", default="local_data/datasets/EPIC-KITCHENS")
 parser.add_argument("--use_tar", action="store_true")
 parser.add_argument("--video_id", default=1, type=int)
 parser.add_argument("--person_id", default=1, type=int)
@@ -40,19 +32,16 @@ parser.add_argument("--fps", default=8, type=int)
 parser.add_argument("--no_objects", action="store_true")
 parser.add_argument("--debug", action="store_true")
 parser.add_argument(
-    "--hoa", action="store_true", help="Add predicted hand and object bbox annotations"
+    "--hoa",
+    action="store_true",
+    help="Add predicted hand and object bbox annotations",
 )
-parser.add_argument(
-    "--hoa_root",
-    default="local_data/datasets/epic-hoa",
-)
+parser.add_argument("--hoa_root", default="local_data/datasets/epic-hoa")
 args = parser.parse_args()
 
 args.video_id = f"{args.video_id:02d}"
 args.person_id = f"P{args.person_id:02d}"
 
-if not args.no_tar:
-    tareader = TarReader()
 for key, val in vars(args).items():
     print(f"{key}: {val}")
 
@@ -65,7 +54,8 @@ action_names = set(extended_action_labels.values())
 
 if args.hoa:
     masks_dets = getmasks.load_video_masks(
-        video_full_id, masks_root=args.hoa_root.replace("hand-objects", "masks")
+        video_full_id,
+        masks_root=args.hoa_root.replace("hand-objects", "masks"),
     )
     hoa_dets = gethoa.load_video_hoa(video_full_id, hoa_root=args.hoa_root)
 if not args.no_objects:
@@ -122,7 +112,9 @@ for frame_idx in tqdm(range(1, args.frame_nb + 1, args.frame_step)):
     else:
         break
     # Get action label time extent bar for given frame
-    adv_colors = labelutils.get_annot_adv(frame_idx, extended_action_labels, cmapping)
+    adv_colors = labelutils.get_annot_adv(
+        frame_idx, extended_action_labels, cmapping
+    )
     ax = fig.add_subplot(2, 1, 1)
     ax.imshow(adv_colors)
     ax.axis("off")
